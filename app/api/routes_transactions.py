@@ -10,8 +10,10 @@ from app.schemas.api_schemas import (
     RuleDefinitionSchema,
     TransactionDetailResponseSchema,
     TransactionListResponseSchema,
+    TransactionTimelineResponseSchema,
     UserProfileSchema,
 )
+from app.services.evidence import build_transaction_timeline
 from app.services.scoring import (
     VALID_SCORING_METHODS,
     compare_transaction_scores,
@@ -164,4 +166,22 @@ def compare_transaction_risk_endpoint(
             detail=f"Transaction '{transaction_id}' not found.",
         )
     return comparison
+
+
+@router.get(
+    "/transactions/{transaction_id}/timeline",
+    response_model=TransactionTimelineResponseSchema,
+)
+def get_transaction_timeline_endpoint(
+    transaction_id: str,
+) -> TransactionTimelineResponseSchema:
+    """Return a unified, chronologically ordered forensic evidence timeline with Kill-Chain tags."""
+    timeline = build_transaction_timeline(transaction_id=transaction_id)
+    if timeline is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Transaction '{transaction_id}' not found.",
+        )
+    return timeline
+
 

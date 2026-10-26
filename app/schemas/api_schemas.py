@@ -176,3 +176,49 @@ class RuleDefinitionSchema(BaseModel):
     max_points: int
     description: str
 
+
+class TimelineEntrySchema(BaseModel):
+    """Single chronological entry in a transaction's unified forensic timeline.
+
+    Explicitly separates `recorded_fact` (objective database telemetry) from
+    `system_interpretation` (forensic inference and kill-chain phase tag).
+    """
+
+    sequence_no: int
+    timestamp_utc: str
+    event_category: str = Field(
+        description="'authentication', 'device', 'beneficiary', 'threat_intelligence', or 'transaction'"
+    )
+    event_type: str
+    source_table: str
+    source_record_id: str
+    geo_location: Optional[str] = None
+    ip_address: Optional[str] = None
+    device_id: Optional[str] = None
+    recorded_fact: str = Field(
+        description="Objective statement of what was stored in the source record."
+    )
+    kill_chain_phase: str = Field(
+        description="'RECON_BRUTE_FORCE', 'INITIAL_ACCESS', 'PREPARATION_PERSISTENCE', 'EXFILTRATION_EXECUTION', or 'NORMAL_ACTIVITY'"
+    )
+    system_interpretation: str = Field(
+        description="System forensic interpretation of how this record relates to the transaction."
+    )
+
+
+class TransactionTimelineResponseSchema(BaseModel):
+    """Unified chronological evidence timeline for `GET /transactions/{transaction_id}/timeline`."""
+
+    transaction_id: str
+    user_id: str
+    user_display_name: str
+    user_profile_type: str
+    user_expenditure_model: str
+    target_timestamp_utc: str
+    total_events: int
+    present_categories: List[str]
+    missing_categories: List[str]
+    kill_chain_phases_observed: List[str]
+    timeline: List[TimelineEntrySchema]
+
+

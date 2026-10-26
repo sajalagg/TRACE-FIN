@@ -282,3 +282,58 @@ curl -X GET "http://127.0.0.1:8000/transactions/TX-0391/risk?method=contextual"
 - **Service Called:** [`compare_transaction_scores`](app/services/scoring.py).
 - **Plain-Language Explanation:** Powers the **Side-by-Side Waterfall / Diff View** on the Streamlit investigation page so you can show in one click how `contextual` eliminates false positives on legitimate CapEx/OpEx business transfers and catches stealthy ATO/BEC/Threat-Intel attacks that `baseline` misses.
 
+---
+
+### 8. Unified Forensic Evidence Timeline — `GET /transactions/{transaction_id}/timeline`
+- **Method & Path:** `GET /transactions/{transaction_id}/timeline`
+- **What it does:** Reconstructs a chronological, timestamp-sorted forensic timeline combining `device_events`, `authentication_events`, `beneficiary_events`, matched `threat_intelligence` indicators, prior 24h `transactions` (for structuring context), and the target transaction itself.
+- **Path Parameters:**
+  - `transaction_id` *(required)*: e.g., `TX-0391`.
+- **Service Called:** [`build_transaction_timeline`](app/services/evidence.py).
+- **Reads/Writes Data:** Reads from `transactions`, `users`, `authentication_events`, `device_events`, `beneficiary_events`, and `threat_intelligence`.
+- **Plain-Language Explanation:** When investigating an incident, events are stored in separate database tables. This endpoint merges them into one chronological story (`sequence_no = 1..N`), keeps the exact `source_table` and `source_record_id` visible for provenance, separates **recorded facts** (`recorded_fact`) from **system interpretations** (`system_interpretation`), and tags each event with its **Forensic Kill-Chain Phase** (`RECON_BRUTE_FORCE`, `INITIAL_ACCESS`, `PREPARATION_PERSISTENCE`, `EXFILTRATION_EXECUTION`, or `NORMAL_ACTIVITY`).
+
+#### Example Request
+```bash
+curl -X GET http://127.0.0.1:8000/transactions/TX-0391/timeline
+```
+
+#### Example Success Response (`200 OK`, abbreviated)
+```json
+{
+  "transaction_id": "TX-0391",
+  "user_id": "USR-001",
+  "user_display_name": "Aarav Sharma (University Student)",
+  "user_profile_type": "student",
+  "user_expenditure_model": "personal_consumption",
+  "target_timestamp_utc": "2026-03-19T19:30:00Z",
+  "total_events": 8,
+  "present_categories": ["authentication", "device", "beneficiary", "transaction"],
+  "missing_categories": [],
+  "kill_chain_phases_observed": [
+    "NORMAL_ACTIVITY",
+    "RECON_BRUTE_FORCE",
+    "INITIAL_ACCESS",
+    "PREPARATION_PERSISTENCE",
+    "EXFILTRATION_EXECUTION"
+  ],
+  "timeline": [
+    {
+      "sequence_no": 2,
+      "timestamp_utc": "2026-03-19T19:18:00Z",
+      "event_category": "authentication",
+      "event_type": "login_failure",
+      "source_table": "authentication_events",
+      "source_record_id": "AUTH-EVT-0392",
+      "geo_location": "NL-Amsterdam",
+      "ip_address": "185.220.101.55",
+      "device_id": "DEV-UNSEEN-ATO-001",
+      "recorded_fact": "Auth record AUTH-EVT-0392: event_type='login_failure', is_success=False, ip='185.220.101.55', geo='NL-Amsterdam', device_id='DEV-UNSEEN-ATO-001'.",
+      "kill_chain_phase": "RECON_BRUTE_FORCE",
+      "system_interpretation": "Failed authentication attempt ('login_failure') from IP 185.220.101.55 (NL-Amsterdam); consistent with credential stuffing or password guessing."
+    }
+  ]
+}
+```
+
+
