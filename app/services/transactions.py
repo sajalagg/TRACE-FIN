@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from app.core.database import get_connection
 from app.schemas.api_schemas import (
     AuthenticationEventSchema,
+    BeneficiaryEventCreateSchema,
     BeneficiaryEventSchema,
     DeviceEventSchema,
+    TransactionCreateResponseSchema,
+    TransactionCreateSchema,
     TransactionDetailResponseSchema,
     TransactionListResponseSchema,
     TransactionSummarySchema,
+    UserCreateSchema,
     UserProfileSchema,
 )
+from app.services.alert_policy import evaluate_alert_decision, validate_timezone_iana
+from app.services.scoring import compare_transaction_scores
 
 
 def _row_to_user_profile(row: sqlite3.Row) -> UserProfileSchema:
@@ -268,3 +275,424 @@ def get_transaction_detail(
         device_events=device_events,
         beneficiary_events=beneficiary_events,
     )
+
+
+def create_user_profile(
+    payload: UserCreateSchema,
+    db_path: Optional[Path] = None,
+) -> UserProfileSchema:
+    """Create a new custom user profile, default alert preferences, and baseline registered device."""
+    validate_timezone_iana(payload.timezone_iana)
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    with get_connection(db_path) as conn:
+        if payload.user_id:
+            existing = conn.execute(
+                "SELECT user_id FROM users WHERE user_id = ?;",
+                (payload.user_id,),
+            ).fetchone()
+            if existing is not None:
+                raise ValueError(f"User ID '{payload.user_id}' already exists.")
+            user_id = payload.user_id
+        else:
+            cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM users;").fetchone()["cnt"])
+            user_id = f"USR-{cnt + 1:03d}"
+            while conn.execute("SELECT 1 FROM users WHERE user_id = ?;", (user_id,)).fetchone():
+                cnt += 1
+                user_id = f"USR-{cnt + 1:03d}"
+
+        conn.execute(
+            """
+            INSERT INTO users (
+                user_id, display_name, account_category, profile_type,
+                industry_sector, expenditure_model, net_worth_band,
+                estimated_net_worth, declared_monthly_turnover,
+                typical_tx_amount, typical_max_tx_amount,
+                expected_monthly_tx_count, operating_hours_utc,
+                home_geo_location, created_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                user_id,
+                payload.display_name,
+                payload.account_category,
+                payload.profile_type,
+                payload.industry_sector,
+                payload.expenditure_model,
+                payload.net_worth_band,
+                payload.estimated_net_worth,
+                payload.declared_monthly_turnover,
+                payload.typical_tx_amount,
+                payload.typical_max_tx_amount,
+                payload.expected_monthly_tx_count,
+                payload.operating_hours_utc,
+                payload.home_geo_location,
+                now_utc,
+            ),
+        )
+
+        conn.execute(
+            """
+            INSERT INTO user_preferences (
+                user_id, risk_threshold, critical_bypass_threshold,
+                timezone_iana, quiet_hours_enabled, quiet_hours_start,
+                quiet_hours_end, updated_at_utc
+            ) VALUES (?, ?, 85, ?, 1, '22:00', '07:00', ?);
+            """,
+            (user_id, payload.risk_threshold, payload.timezone_iana, now_utc),
+        )
+
+        # Register a default known device so normal transactions for this user have a baseline device
+        dev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM device_events;").fetchone()["cnt"])
+        dev_ev_id = f"DEV-EVT-{dev_cnt + 1:04d}"
+        default_dev_id = f"DEV-{user_id}-PRIMARY"
+        conn.execute(
+            """
+            INSERT INTO device_events (
+                event_id, user_id, timestamp_utc, device_id,
+                device_label, event_type, known_status
+            ) VALUES (?, ?, ?, ?, 'Primary Registered Device', 'device_registered', 'known');
+            """,
+            (dev_ev_id, user_id, "2026-01-01T08:00:00Z", default_dev_id),
+        )
+        conn.commit()
+
+        row = conn.execute("SELECT * FROM users WHERE user_id = ?;", (user_id,)).fetchone()
+    return _row_to_user_profile(row)
+
+
+def list_user_beneficiaries(
+    user_id: str,
+    db_path: Optional[Path] = None,
+) -> Optional[List[BeneficiaryEventSchema]]:
+    """Return all beneficiary events for `user_id`, or `None` if user does not exist."""
+    with get_connection(db_path) as conn:
+        u_row = conn.execute("SELECT user_id FROM users WHERE user_id = ?;", (user_id,)).fetchone()
+        if u_row is None:
+            return None
+        rows = conn.execute(
+            """
+            SELECT * FROM beneficiary_events
+            WHERE user_id = ?
+            ORDER BY timestamp_utc DESC, event_id DESC;
+            """,
+            (user_id,),
+        ).fetchall()
+
+    return [
+        BeneficiaryEventSchema(
+            event_id=r["event_id"],
+            user_id=r["user_id"],
+            beneficiary_id=r["beneficiary_id"],
+            beneficiary_name=r["beneficiary_name"],
+            beneficiary_category=r["beneficiary_category"],
+            beneficiary_industry=r["beneficiary_industry"],
+            timestamp_utc=r["timestamp_utc"],
+            event_type=r["event_type"],
+            notes=r["notes"],
+        )
+        for r in rows
+    ]
+
+
+def create_beneficiary_event(
+    payload: BeneficiaryEventCreateSchema,
+    db_path: Optional[Path] = None,
+) -> Optional[BeneficiaryEventSchema]:
+    """Create a beneficiary event ('beneficiary_added', 'beneficiary_verified', or 'beneficiary_bank_updated')."""
+    ts_str = payload.timestamp_utc or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Validate timestamp format
+    try:
+        datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid timestamp_utc '{ts_str}'. Expected 'YYYY-MM-DDTHH:MM:SSZ'."
+        ) from exc
+
+    with get_connection(db_path) as conn:
+        u_row = conn.execute(
+            "SELECT user_id FROM users WHERE user_id = ?;",
+            (payload.user_id,),
+        ).fetchone()
+        if u_row is None:
+            return None
+
+        ev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM beneficiary_events;").fetchone()["cnt"])
+        event_id = f"BEN-EVT-{ev_cnt + 1:04d}"
+        ben_id = payload.beneficiary_id or f"BEN-CUSTOM-{ev_cnt + 1:03d}"
+
+        conn.execute(
+            """
+            INSERT INTO beneficiary_events (
+                event_id, user_id, beneficiary_id, beneficiary_name,
+                beneficiary_category, beneficiary_industry,
+                timestamp_utc, event_type, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                event_id,
+                payload.user_id,
+                ben_id,
+                payload.beneficiary_name,
+                payload.beneficiary_category,
+                payload.beneficiary_industry,
+                ts_str,
+                payload.event_type,
+                payload.notes,
+            ),
+        )
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT * FROM beneficiary_events WHERE event_id = ?;",
+            (event_id,),
+        ).fetchone()
+
+    return BeneficiaryEventSchema(
+        event_id=row["event_id"],
+        user_id=row["user_id"],
+        beneficiary_id=row["beneficiary_id"],
+        beneficiary_name=row["beneficiary_name"],
+        beneficiary_category=row["beneficiary_category"],
+        beneficiary_industry=row["beneficiary_industry"],
+        timestamp_utc=row["timestamp_utc"],
+        event_type=row["event_type"],
+        notes=row["notes"],
+    )
+
+
+def create_live_transaction(
+    payload: TransactionCreateSchema,
+    db_path: Optional[Path] = None,
+) -> Optional[TransactionCreateResponseSchema]:
+    """Create a live transaction (plus optional forensic precursor events) and return immediate risk scores."""
+    ts_str = payload.timestamp_utc or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        tx_dt = datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid timestamp_utc '{ts_str}'. Expected 'YYYY-MM-DDTHH:MM:SSZ'."
+        ) from exc
+
+    def _fmt(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    with get_connection(db_path) as conn:
+        user_row = conn.execute(
+            "SELECT * FROM users WHERE user_id = ?;",
+            (payload.user_id,),
+        ).fetchone()
+        if user_row is None:
+            return None
+
+        uid = payload.user_id
+        home_geo = user_row["home_geo_location"]
+        tx_geo = payload.geo_location or home_geo
+
+        # Determine device_id
+        known_dev_row = conn.execute(
+            """
+            SELECT device_id FROM device_events
+            WHERE user_id = ? AND known_status = 'known'
+            ORDER BY timestamp_utc ASC LIMIT 1;
+            """,
+            (uid,),
+        ).fetchone()
+        default_known_dev = (
+            str(known_dev_row["device_id"]) if known_dev_row else f"DEV-{uid}-PRIMARY"
+        )
+
+        tx_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM transactions;").fetchone()["cnt"])
+        tx_id = f"TX-{tx_cnt + 1:04d}"
+        while conn.execute("SELECT 1 FROM transactions WHERE transaction_id = ?;", (tx_id,)).fetchone():
+            tx_cnt += 1
+            tx_id = f"TX-{tx_cnt + 1:04d}"
+
+        if payload.simulate_unseen_device:
+            dev_id = payload.device_id or f"DEV-UNSEEN-{tx_cnt + 1:03d}"
+            dev_ev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM device_events;").fetchone()["cnt"])
+            conn.execute(
+                """
+                INSERT INTO device_events (
+                    event_id, user_id, timestamp_utc, device_id,
+                    device_label, event_type, known_status
+                ) VALUES (?, ?, ?, ?, 'Unrecognized Live Demo Device', 'new_device_detected', 'new');
+                """,
+                (
+                    f"DEV-EVT-{dev_ev_cnt + 1:04d}",
+                    uid,
+                    _fmt(tx_dt - timedelta(minutes=5)),
+                    dev_id,
+                ),
+            )
+        else:
+            dev_id = payload.device_id or default_known_dev
+
+        auth_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM authentication_events;").fetchone()["cnt"])
+
+        # 1. Optional Impossible Travel precursor (login at home 18 mins before foreign transaction)
+        if payload.simulate_impossible_travel_from_home:
+            auth_cnt += 1
+            conn.execute(
+                """
+                INSERT INTO authentication_events (
+                    event_id, user_id, timestamp_utc, event_type,
+                    ip_address, geo_location, device_id, is_success
+                ) VALUES (?, ?, ?, 'login_success', '103.21.244.10', ?, ?, 1);
+                """,
+                (
+                    f"AUTH-EVT-{auth_cnt:04d}",
+                    uid,
+                    _fmt(tx_dt - timedelta(minutes=18)),
+                    home_geo,
+                    default_known_dev,
+                ),
+            )
+
+        # 2. Optional Failed Logins precursor
+        for f_i in range(payload.simulate_failed_logins):
+            auth_cnt += 1
+            conn.execute(
+                """
+                INSERT INTO authentication_events (
+                    event_id, user_id, timestamp_utc, event_type,
+                    ip_address, geo_location, device_id, is_success
+                ) VALUES (?, ?, ?, 'login_failure', ?, ?, ?, 0);
+                """,
+                (
+                    f"AUTH-EVT-{auth_cnt:04d}",
+                    uid,
+                    _fmt(tx_dt - timedelta(minutes=10 + f_i)),
+                    payload.ip_address,
+                    tx_geo,
+                    dev_id,
+                ),
+            )
+
+        # 3. Record successful session login 6 minutes prior to transaction
+        auth_cnt += 1
+        conn.execute(
+            """
+            INSERT INTO authentication_events (
+                event_id, user_id, timestamp_utc, event_type,
+                ip_address, geo_location, device_id, is_success
+            ) VALUES (?, ?, ?, 'login_success', ?, ?, ?, 1);
+            """,
+            (
+                f"AUTH-EVT-{auth_cnt:04d}",
+                uid,
+                _fmt(tx_dt - timedelta(minutes=6)),
+                payload.ip_address,
+                tx_geo,
+                dev_id,
+            ),
+        )
+
+        # 4. Optional Rapid New Beneficiary or Vendor BEC Bank Modification
+        ben_ev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM beneficiary_events;").fetchone()["cnt"])
+        if payload.simulate_rapid_new_beneficiary:
+            ben_ev_cnt += 1
+            conn.execute(
+                """
+                INSERT INTO beneficiary_events (
+                    event_id, user_id, beneficiary_id, beneficiary_name,
+                    beneficiary_category, beneficiary_industry,
+                    timestamp_utc, event_type, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'beneficiary_added', 'Added 4 mins prior to live demo transaction.');
+                """,
+                (
+                    f"BEN-EVT-{ben_ev_cnt:04d}",
+                    uid,
+                    payload.beneficiary_id,
+                    payload.beneficiary_name,
+                    payload.beneficiary_category,
+                    payload.beneficiary_industry,
+                    _fmt(tx_dt - timedelta(minutes=4)),
+                ),
+            )
+
+        if payload.simulate_vendor_bec_bank_update:
+            ben_ev_cnt += 1
+            conn.execute(
+                """
+                INSERT INTO beneficiary_events (
+                    event_id, user_id, beneficiary_id, beneficiary_name,
+                    beneficiary_category, beneficiary_industry,
+                    timestamp_utc, event_type, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'beneficiary_bank_updated', 'Bank account/IBAN modified 12 mins prior to live demo wire.');
+                """,
+                (
+                    f"BEN-EVT-{ben_ev_cnt:04d}",
+                    uid,
+                    payload.beneficiary_id,
+                    payload.beneficiary_name,
+                    payload.beneficiary_category,
+                    payload.beneficiary_industry,
+                    _fmt(tx_dt - timedelta(minutes=12)),
+                ),
+            )
+
+        is_susp_flag = (
+            1
+            if (
+                payload.simulate_failed_logins > 0
+                or payload.simulate_unseen_device
+                or payload.simulate_impossible_travel_from_home
+                or payload.simulate_rapid_new_beneficiary
+                or payload.simulate_vendor_bec_bank_update
+            )
+            else 0
+        )
+
+        conn.execute(
+            """
+            INSERT INTO transactions (
+                transaction_id, user_id, amount, currency, timestamp_utc,
+                beneficiary_id, beneficiary_name, beneficiary_category,
+                beneficiary_industry, device_id, ip_address, geo_location,
+                is_suspicious, scenario_label
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live_custom_demo');
+            """,
+            (
+                tx_id,
+                uid,
+                round(payload.amount, 2),
+                payload.currency,
+                ts_str,
+                payload.beneficiary_id,
+                payload.beneficiary_name,
+                payload.beneficiary_category,
+                payload.beneficiary_industry,
+                dev_id,
+                payload.ip_address,
+                tx_geo,
+                is_susp_flag,
+            ),
+        )
+        conn.commit()
+
+        joined_tx = conn.execute(
+            """
+            SELECT t.*, u.display_name, u.profile_type, u.expenditure_model
+            FROM transactions t
+            JOIN users u ON t.user_id = u.user_id
+            WHERE t.transaction_id = ?;
+            """,
+            (tx_id,),
+        ).fetchone()
+
+    tx_summary = _row_to_tx_summary(joined_tx)
+    comparison = compare_transaction_scores(transaction_id=tx_id, db_path=db_path)
+    alert_dec = evaluate_alert_decision(
+        transaction_id=tx_id,
+        method="contextual_ti",
+        db_path=db_path,
+    )
+    assert comparison is not None and alert_dec is not None
+
+    return TransactionCreateResponseSchema(
+        transaction=tx_summary,
+        risk_comparison=comparison,
+        alert_policy_decision=alert_dec,
+    )
+

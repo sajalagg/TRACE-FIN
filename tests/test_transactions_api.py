@@ -105,3 +105,81 @@ def test_get_transaction_detail_not_found_and_validation(seeded_client: TestClie
 
     bad_limit = seeded_client.get("/transactions?limit=0")
     assert bad_limit.status_code == 422
+
+
+def test_create_custom_user_beneficiary_and_live_transaction(
+    seeded_client: TestClient,
+) -> None:
+    """Verify live demo creation flow: POST /users -> POST /beneficiaries -> POST /transactions."""
+    # 1. Create a new custom user profile
+    user_res = seeded_client.post(
+        "/users",
+        json={
+            "display_name": "Classroom Demo Manufacturing Ltd",
+            "account_category": "business",
+            "profile_type": "enterprise_capex_firm",
+            "industry_sector": "manufacturing_heavy_machinery",
+            "expenditure_model": "capex_heavy",
+            "net_worth_band": ">$5M",
+            "estimated_net_worth": 5000000.0,
+            "declared_monthly_turnover": 300000.0,
+            "typical_tx_amount": 20000.0,
+            "typical_max_tx_amount": 90000.0,
+            "expected_monthly_tx_count": 12,
+            "operating_hours_utc": "04:00-16:00",
+            "home_geo_location": "IN-Mumbai",
+            "risk_threshold": 65,
+            "timezone_iana": "Asia/Kolkata",
+        },
+    )
+    assert user_res.status_code == 200
+    created_user = user_res.json()
+    new_uid = created_user["user_id"]
+    assert new_uid == "USR-013"
+
+    # 2. Add a beneficiary for this new user via POST /beneficiaries
+    ben_res = seeded_client.post(
+        "/beneficiaries",
+        json={
+            "user_id": new_uid,
+            "beneficiary_id": "BEN-DEMO-SUPPLIER-01",
+            "beneficiary_name": "Demo Robotics & CNC GmbH",
+            "beneficiary_category": "verified_b2b_vendor",
+            "beneficiary_industry": "heavy_machinery_equipment",
+            "event_type": "beneficiary_added",
+            "timestamp_utc": "2026-03-01T10:00:00Z",
+        },
+    )
+    assert ben_res.status_code == 200
+    assert ben_res.json()["beneficiary_id"] == "BEN-DEMO-SUPPLIER-01"
+
+    list_ben_res = seeded_client.get(f"/users/{new_uid}/beneficiaries")
+    assert list_ben_res.status_code == 200
+    assert len(list_ben_res.json()) == 1
+
+    # 3. Submit a live transaction with simulated BEC bank update + Threat-Intel IP
+    tx_res = seeded_client.post(
+        "/transactions",
+        json={
+            "user_id": new_uid,
+            "amount": 65000.0,
+            "currency": "USD",
+            "beneficiary_id": "BEN-DEMO-SUPPLIER-01",
+            "beneficiary_name": "Demo Robotics & CNC GmbH",
+            "beneficiary_category": "verified_b2b_vendor",
+            "beneficiary_industry": "heavy_machinery_equipment",
+            "ip_address": "198.51.100.201",
+            "geo_location": "IN-Mumbai",
+            "timestamp_utc": "2026-03-26T10:00:00Z",
+            "simulate_vendor_bec_bank_update": True,
+        },
+    )
+    assert tx_res.status_code == 200
+    tx_payload = tx_res.json()
+
+    assert tx_payload["transaction"]["transaction_id"] == "TX-0501"
+    assert tx_payload["transaction"]["user_id"] == new_uid
+    assert tx_payload["risk_comparison"]["contextual"]["risk_score"] >= 65
+    assert tx_payload["risk_comparison"]["contextual_ti"]["risk_score"] >= 95
+    assert tx_payload["alert_policy_decision"]["exceeds_risk_threshold"] is True
+

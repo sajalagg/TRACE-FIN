@@ -29,6 +29,84 @@ class UserProfileSchema(BaseModel):
     created_at_utc: str
 
 
+class UserCreateSchema(BaseModel):
+    """Request body schema for creating a new custom user profile (`POST /users`) during a live demo."""
+
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Optional custom ID (e.g., 'USR-013'). Auto-generated if omitted.",
+    )
+    display_name: str = Field(
+        default="Live Demo Corp (OpEx Retail SME)",
+        description="Display name for the synthetic user or business.",
+    )
+    account_category: str = Field(
+        default="business",
+        pattern=r"^(individual|business)$",
+        description="'individual' or 'business'",
+    )
+    profile_type: str = Field(
+        default="sme_opex_merchant",
+        description="e.g., 'student', 'salaried_individual', 'freelancer', 'sme_opex_merchant', 'enterprise_capex_firm', 'high_net_worth'",
+    )
+    industry_sector: str = Field(
+        default="retail_ecommerce",
+        description="e.g., 'retail_ecommerce', 'saas_it_services', 'hospitality', 'manufacturing_heavy_machinery', 'construction_infra', 'education', 'personal_finance'",
+    )
+    expenditure_model: str = Field(
+        default="opex_heavy",
+        pattern=r"^(opex_heavy|capex_heavy|personal_consumption)$",
+        description="'opex_heavy', 'capex_heavy', or 'personal_consumption'",
+    )
+    net_worth_band: str = Field(default="$250K-$1M")
+    estimated_net_worth: float = Field(default=450000.0, gt=0)
+    declared_monthly_turnover: float = Field(default=60000.0, gt=0)
+    typical_tx_amount: float = Field(default=950.0, gt=0)
+    typical_max_tx_amount: float = Field(default=7500.0, gt=0)
+    expected_monthly_tx_count: int = Field(default=85, gt=0)
+    operating_hours_utc: str = Field(
+        default="04:00-18:00",
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$",
+    )
+    home_geo_location: str = Field(default="IN-Mumbai")
+    risk_threshold: int = Field(default=60, ge=10, le=95)
+    timezone_iana: str = Field(default="Asia/Kolkata")
+
+
+class BeneficiaryEventCreateSchema(BaseModel):
+    """Request body schema for adding or updating a beneficiary (`POST /beneficiaries`) during a live demo."""
+
+    user_id: str = Field(description="User ID who owns or is updating this beneficiary (e.g., 'USR-001').")
+    beneficiary_id: Optional[str] = Field(
+        default=None,
+        description="Beneficiary ID (e.g., 'BEN-DEMO-01'). Auto-generated if omitted.",
+    )
+    beneficiary_name: str = Field(
+        default="Apex Global Supplies Ltd",
+        description="Display name of the counterparty/beneficiary.",
+    )
+    beneficiary_category: str = Field(
+        default="verified_b2b_vendor",
+        description="e.g., 'verified_b2b_vendor', 'employee_payroll', 'utility_tax', 'personal_peer', 'financial_brokerage'",
+    )
+    beneficiary_industry: str = Field(
+        default="wholesale_fmcg_inventory",
+        description="e.g., 'heavy_machinery_equipment', 'raw_materials_steel_cement', 'wholesale_fmcg_inventory', 'cloud_saas_hosting', 'luxury_retail_jewelry', 'digital_assets_brokerage', 'general_consumer'",
+    )
+    event_type: str = Field(
+        default="beneficiary_added",
+        pattern=r"^(beneficiary_added|beneficiary_verified|beneficiary_bank_updated)$",
+        description="'beneficiary_added', 'beneficiary_verified', or 'beneficiary_bank_updated' (simulates Vendor BEC bank-detail change!).",
+    )
+    timestamp_utc: Optional[str] = Field(
+        default=None,
+        description="Optional ISO-8601 UTC timestamp ('YYYY-MM-DDTHH:MM:SSZ'). Defaults to current UTC time.",
+    )
+    notes: Optional[str] = Field(
+        default="Created interactively during live presentation demo.",
+    )
+
+
 class AuthenticationEventSchema(BaseModel):
     """Schema for an authentication event linked to a user."""
 
@@ -543,6 +621,85 @@ class EvaluationReportResponseSchema(BaseModel):
     per_scenario_breakdown: List[ScenarioBreakdownItemSchema]
     per_expenditure_model_breakdown: List[ExpenditureModelBreakdownSchema]
     threshold_tradeoff_curve: List[ThresholdTradeoffPointSchema]
+
+
+class TransactionCreateSchema(BaseModel):
+    """Request body schema for submitting a new live transaction (`POST /transactions`) during a presentation."""
+
+    user_id: str = Field(
+        default="USR-001",
+        description="Sender user_id (e.g., 'USR-001', 'USR-010', or a newly created user).",
+    )
+    amount: float = Field(
+        default=185.0,
+        gt=0,
+        description="Transaction amount in USD.",
+    )
+    currency: str = Field(default="USD")
+    beneficiary_id: str = Field(
+        default="BEN-DEMO-01",
+        description="Target beneficiary ID (can be an existing beneficiary or a new one).",
+    )
+    beneficiary_name: str = Field(
+        default="Instant Peer Wallet Demo",
+        description="Display name of the beneficiary.",
+    )
+    beneficiary_category: str = Field(
+        default="personal_peer",
+        description="e.g., 'verified_b2b_vendor', 'employee_payroll', 'utility_tax', 'personal_peer', 'financial_brokerage'",
+    )
+    beneficiary_industry: str = Field(
+        default="digital_assets_brokerage",
+        description="e.g., 'heavy_machinery_equipment', 'raw_materials_steel_cement', 'wholesale_fmcg_inventory', 'cloud_saas_hosting', 'luxury_retail_jewelry', 'digital_assets_brokerage', 'general_consumer'",
+    )
+    device_id: Optional[str] = Field(
+        default=None,
+        description="Device ID used for the transfer. Defaults to the user's primary known device unless simulate_unseen_device=True.",
+    )
+    ip_address: str = Field(
+        default="198.51.100.201",
+        description="IP address originating the transaction (use '198.51.100.201' to demo an active Threat-Intel match!).",
+    )
+    geo_location: Optional[str] = Field(
+        default=None,
+        description="Geographic location (e.g., 'IN-Mumbai', 'NL-Amsterdam'). Defaults to user's home location.",
+    )
+    timestamp_utc: Optional[str] = Field(
+        default=None,
+        description="Optional ISO-8601 UTC timestamp ('YYYY-MM-DDTHH:MM:SSZ'). Defaults to current UTC time.",
+    )
+    # Optional one-click forensic scenario toggles for live presentation demos
+    simulate_failed_logins: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description="If > 0, automatically inserts preceding login_failure events 5-10 minutes before the transaction.",
+    )
+    simulate_unseen_device: bool = Field(
+        default=False,
+        description="If True, uses a brand-new unseen device and logs a 'new_device_detected' event.",
+    )
+    simulate_impossible_travel_from_home: bool = Field(
+        default=False,
+        description="If True, logs a successful home-location login 15 minutes before the transaction from a foreign geo_location.",
+    )
+    simulate_rapid_new_beneficiary: bool = Field(
+        default=False,
+        description="If True, logs a 'beneficiary_added' event 4 minutes before the transaction.",
+    )
+    simulate_vendor_bec_bank_update: bool = Field(
+        default=False,
+        description="If True, logs a 'beneficiary_bank_updated' (Vendor BEC tamper) event 12 minutes before the transaction.",
+    )
+
+
+class TransactionCreateResponseSchema(BaseModel):
+    """Response returned by `POST /transactions` with the stored transaction and immediate risk analysis."""
+
+    transaction: TransactionSummarySchema
+    risk_comparison: RiskComparisonResponseSchema
+    alert_policy_decision: AlertDecisionResponseSchema
+
 
 
 
