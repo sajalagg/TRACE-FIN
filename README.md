@@ -45,16 +45,19 @@ Streamlit UI  --->  FastAPI REST API  --->  Service Layer  --->  SQLite Database
 
 ---
 
-## Quickstart (Current Stage: Stage 1)
+## Quickstart (Current Stage: Stage 2)
 
 ```bash
 # 1. Activate the virtual environment
 source .venv/bin/activate
 
-# 2. Run the test suite
+# 2. Seed and inspect the deterministic synthetic SQLite database (500 transactions)
+python -m scripts.seed_demo_data
+
+# 3. Run the automated test suite
 pytest -v
 
-# 3. Start the FastAPI backend
+# 4. Start the FastAPI backend
 uvicorn app.main:app --reload
 ```
 
@@ -65,8 +68,8 @@ Once running, test the health endpoint at `http://127.0.0.1:8000/health` or open
 ## Development Roadmap
 We are building TRACE-Fin incrementally:
 - **Stage 0:** Repository inspection, architecture plan, and documentation ✅
-- **Stage 1:** Minimal FastAPI skeleton (`GET /health`) + test ✅ *(Current)*
-- **Stage 2:** SQLite schema (including User Financial/Business Profiles) & reproducible synthetic data seeding
+- **Stage 1:** Minimal FastAPI skeleton (`GET /health`) + test ✅
+- **Stage 2:** SQLite schema (User Financial/Business Profiles, BEC, Structuring, Geo-Velocity) & reproducible synthetic data seeding ✅ *(Current)*
 - **Stage 3:** Read-only transaction API (`GET /transactions`, `GET /transactions/{id}`)
 - **Stage 4:** Explainable rule-based scoring engine (3 comparable methods)
 - **Stage 5:** Unified forensic evidence timeline
