@@ -1019,17 +1019,16 @@ def seed_database(
             day_offset = rng.randint(5, 24)
 
             if i % 2 == 0:
-                # Active threat-intelligence match + suspicious transfer
+                # Active threat-intelligence match: stealthy session replay using known device
+                # (so contextual alone scores ~50, below threshold, and active Threat-Intel pushes it to 70-80!)
                 hour = _off_operating_hour(u, rng)
                 ts = sim_start + timedelta(days=day_offset, hours=hour, minutes=15)
                 ti_ip = active_ti_ips[i % len(active_ti_ips)]
-                dev_id = f"DEV-TI-BOT-{i + 1:03d}"
+                dev_id = user_known_devices[uid][0]
                 ben_id = f"BEN-TI-DROP-{i + 1:03d}"
                 ben_name = f"Offshore Escrow Exchange #{i + 1}"
 
-                insert_auth(uid, ts - timedelta(minutes=9), "login_failure", ti_ip, "NL-Amsterdam", dev_id, 0)
-                insert_auth(uid, ts - timedelta(minutes=7), "login_success", ti_ip, "NL-Amsterdam", dev_id, 1)
-                insert_dev_event(uid, ts - timedelta(minutes=7), dev_id, "Unknown Linux Session", "new_device_detected", "new")
+                insert_auth(uid, ts - timedelta(minutes=7), "login_success", ti_ip, u["home_geo_location"], dev_id, 1)
                 insert_ben_event(
                     uid,
                     ben_id,
@@ -1038,10 +1037,10 @@ def seed_database(
                     "digital_assets_brokerage",
                     ts - timedelta(minutes=4),
                     "beneficiary_added",
-                    "Created from demo threat-intel flagged IP.",
+                    "Created during session originating from demo threat-intel flagged IP.",
                 )
 
-                amount = u["typical_max_tx_amount"] * rng.uniform(0.75, 1.15)
+                amount = u["typical_tx_amount"] * rng.uniform(1.05, 1.40)
                 insert_tx(
                     u,
                     amount,
@@ -1052,7 +1051,7 @@ def seed_database(
                     "digital_assets_brokerage",
                     dev_id,
                     ti_ip,
-                    "NL-Amsterdam",
+                    u["home_geo_location"],
                     1,
                     "threat_intel_active_or_stale_ip",
                 )
