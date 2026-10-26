@@ -558,9 +558,13 @@ curl -X GET http://127.0.0.1:8000/dashboard/summary
 | :--- | :--- | :--- |
 | **Health Status** | `GET /health` | Check if backend is online |
 | **Dashboard Overview** | `GET /dashboard/summary` | KPI totals, user profile counts, incident counts, 10 newest transactions |
-| **User Profiles List** | `GET /users` | List all 12 users with OpEx/CapEx, industry, net worth, turnover, max tx |
+| **User Profiles List** | `GET /users` | List all users with OpEx/CapEx, industry, net worth, turnover, max tx |
+| **Create Custom User** | `POST /users` | Create a new User Financial & Business Profile live from the UI |
 | **Single User Profile** | `GET /users/{user_id}` | Get one user's financial & business profile |
+| **User Beneficiaries** | `GET /users/{user_id}/beneficiaries` | List all beneficiary events for a user |
+| **Add/Modify Beneficiary** | `POST /beneficiaries` | Add a beneficiary (`beneficiary_added`) or simulate BEC bank modification (`beneficiary_bank_updated`) |
 | **Transactions List** | `GET /transactions` | Paginated & filterable transaction list (`limit`, `offset`, `user_id`, `expenditure_model`, `profile_type`, `beneficiary_category`) |
+| **Create Live Transaction** | `POST /transactions` | Insert a new transaction (with optional forensic toggles) and immediately get 3-method risk comparison + alert decision |
 | **Transaction Detail** | `GET /transactions/{transaction_id}` | Transaction + sender profile + raw auth, device, and beneficiary events |
 | **Rule Catalog** | `GET /risk/rules` | Documented rule weights and descriptions |
 | **Single Risk Score** | `GET /transactions/{transaction_id}/risk?method=contextual` | 0–100 score, triggered rules, evidence refs, and counterfactual summary |
@@ -576,6 +580,7 @@ curl -X GET http://127.0.0.1:8000/dashboard/summary
 | **Incident Dossier** | `GET /incidents/{incident_id}` | Full incident detail, BEC/ATO playbook, linked evidence, and live SHA-256 integrity verification |
 | **Update Incident Status** | `PATCH /incidents/{incident_id}` | Update status (`open`, `investigating`, `closed`) and investigator note |
 | **Evaluation Metrics** | `GET /evaluation/metrics` | Live Confusion Matrices, Precision/Recall/F1/FPR, Per-Scenario & OpEx/CapEx tables, and Threshold Curves |
+
 
 
 
