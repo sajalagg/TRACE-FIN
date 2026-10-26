@@ -69,11 +69,11 @@ Once running, test the health endpoint at `http://127.0.0.1:8000/health` or open
 We are building TRACE-Fin incrementally:
 - **Stage 0:** Repository inspection, architecture plan, and documentation ✅
 - **Stage 1:** Minimal FastAPI skeleton (`GET /health`) + test ✅
-- **Stage 2:** SQLite schema (User Financial/Business Profiles, BEC, Structuring, Geo-Velocity) & reproducible synthetic data seeding ✅ *(Current)*
-- **Stage 3:** Read-only transaction API (`GET /transactions`, `GET /transactions/{id}`)
-- **Stage 4:** Explainable rule-based scoring engine (3 comparable methods)
-- **Stage 5:** Unified forensic evidence timeline
-- **Stage 6:** User alert preferences (thresholds, time zones, quiet hours)
+- **Stage 2:** SQLite schema (User Financial/Business Profiles, BEC, Structuring, Geo-Velocity) & reproducible synthetic data seeding ✅
+- **Stage 3:** Read-only transaction & user profile API (`GET /users`, `GET /transactions`, `GET /transactions/{id}`) ✅
+- **Stage 4:** Explainable rule-based scoring engine (3 comparable methods + counterfactuals + side-by-side comparison) ✅
+- **Stage 5:** Unified forensic evidence timeline with Kill-Chain phase tagging ✅ *(Current)*
+- **Stage 6:** User alert preferences (thresholds, time zones, quiet hours, What-If policy simulator)
 - **Stage 7:** Simulated transaction verification workflow
 - **Stage 8:** Incident register and lifecycle management
 - **Stage 9:** Streamlit user interface
