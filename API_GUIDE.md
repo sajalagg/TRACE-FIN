@@ -336,4 +336,249 @@ curl -X GET http://127.0.0.1:8000/transactions/TX-0391/timeline
 }
 ```
 
+---
+
+### 9. Get & Update User Alert Preferences — `GET /preferences/{user_id}` & `PUT /preferences/{user_id}`
+- **Method & Path:** `GET /preferences/{user_id}` and `PUT /preferences/{user_id}`
+- **What it does:** Reads or updates a synthetic user's alert threshold (`risk_threshold` `10–95`), critical quiet-hours bypass threshold (`critical_bypass_threshold` `50–100`), IANA time zone (`timezone_iana`, e.g., `Asia/Kolkata`, `Europe/London`, `America/New_York`), and quiet-hours window (`quiet_hours_enabled`, `quiet_hours_start`, `quiet_hours_end`).
+- **Service Called:** [`get_user_preferences`](app/services/alert_policy.py) / [`update_user_preferences`](app/services/alert_policy.py).
+- **Reads/Writes Data:** Reads/writes the `user_preferences` table in SQLite.
+- **Plain-Language Explanation:** Lets each user control how sensitive their alerts are and when non-urgent notifications should wait until morning—without changing the underlying forensic risk score.
+
+#### Example `PUT` Request
+```bash
+curl -X PUT http://127.0.0.1:8000/preferences/USR-001 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "risk_threshold": 60,
+    "critical_bypass_threshold": 85,
+    "timezone_iana": "Asia/Kolkata",
+    "quiet_hours_enabled": true,
+    "quiet_hours_start": "22:00",
+    "quiet_hours_end": "07:00"
+  }'
+```
+
+#### Important Error Responses
+- `404 Not Found`: Unknown `user_id`.
+- `422 Unprocessable Entity`: Invalid IANA timezone, malformed `HH:MM`, or `critical_bypass_threshold < risk_threshold`.
+
+---
+
+### 10. Evaluate Alert Policy & "What-If" Simulator — `GET /transactions/{transaction_id}/alert-decision`
+- **Method & Path:** `GET /transactions/{transaction_id}/alert-decision`
+- **Query Parameters:**
+  - `method` *(optional, default `'contextual'`)*: `'baseline'`, `'contextual'`, or `'contextual_ti'`.
+  - Optional **What-If Simulator** overrides: `override_threshold`, `override_critical_bypass`, `override_timezone`, `override_quiet_hours_enabled`, `override_quiet_hours_start`, `override_quiet_hours_end`.
+- **Service Called:** [`evaluate_alert_decision`](app/services/alert_policy.py).
+- **Reads/Writes Data:** Read-only (evaluates stored preferences or temporary What-If query parameters without modifying the database).
+- **Plain-Language Explanation:** Converts the transaction's UTC timestamp into the user's local IANA time zone, checks whether it falls inside overnight quiet hours (e.g., `22:00–07:00`), and returns one of four explicit policy decisions:
+  1. `NO_ALERT_BELOW_THRESHOLD` (`risk_score < risk_threshold`)
+  2. `ALERT_NOW` (`risk_score >= risk_threshold`, outside local quiet hours)
+  3. `QUEUED_FOR_QUIET_HOURS` (`risk_score >= risk_threshold`, inside local quiet hours, and `risk_score < critical_bypass_threshold`)
+  4. `ALERT_NOW_CRITICAL_BYPASS` (`risk_score >= critical_bypass_threshold`, bypassing quiet hours for urgent review)
+
+#### Example Request
+```bash
+curl -X GET "http://127.0.0.1:8000/transactions/TX-0391/alert-decision?method=contextual"
+```
+
+#### Example Success Response (`200 OK`)
+```json
+{
+  "transaction_id": "TX-0391",
+  "user_id": "USR-001",
+  "scoring_method": "contextual",
+  "risk_score": 100,
+  "risk_band": "critical",
+  "applied_preferences": {
+    "user_id": "USR-001",
+    "risk_threshold": 55,
+    "critical_bypass_threshold": 85,
+    "timezone_iana": "Asia/Kolkata",
+    "quiet_hours_enabled": true,
+    "quiet_hours_start": "22:00",
+    "quiet_hours_end": "07:00",
+    "updated_at_utc": "2026-01-01T08:00:00Z"
+  },
+  "is_what_if_simulation": false,
+  "transaction_timestamp_utc": "2026-03-19T19:30:00Z",
+  "transaction_local_time": "2026-03-20 01:00:00 IST (UTC+0530)",
+  "within_quiet_hours": true,
+  "exceeds_risk_threshold": true,
+  "exceeds_critical_bypass": true,
+  "alert_decision": "ALERT_NOW_CRITICAL_BYPASS",
+  "decision_explanation": "Urgent alert (quiet-hours bypass): transaction occurred during local quiet hours (01:00 Asia/Kolkata, window 22:00-07:00), but score (100/100) meets/exceeds critical bypass threshold (85).",
+  "policy_disclaimer": "Demonstration Alert Policy Only: Quiet-hours queueing and critical-event bypass are simulated for classroom evaluation. Quiet hours never erase forensic evidence or modify the underlying rule-based risk score."
+}
+```
+
+---
+
+### 11. Simulated Transaction Verification Workflow — `POST /verification-requests` & `POST /verification-requests/{request_id}/respond`
+- **Method & Path:**
+  - `GET /verification-requests` (optional `status` and `user_id` filters)
+  - `GET /verification-requests/{request_id}`
+  - `POST /verification-requests`
+  - `POST /verification-requests/{request_id}/respond`
+- **What it does:** Simulates sending a verification prompt to the account holder for a flagged transaction and recording their response:
+  - `"approved"` (*"I made this transaction"*): Updates status to `confirmed_legitimate` while preserving all underlying forensic risk evidence.
+  - `"denied"` (*"I did not make this transaction"*): Updates status to `denied_suspicious`, automatically opens an evidence-linked incident in `incidents` + `incident_evidence`, and computes a canonical JSON snapshot + SHA-256 digest (`evidence_sha256`).
+- **Service Called:** [`create_verification_request`](app/services/verification.py) and [`respond_to_verification_request`](app/services/verification.py) (which calls [`create_or_get_incident_for_denial`](app/services/incidents.py)).
+- **Reads/Writes Data:** Writes to `verification_requests` (and `incidents` + `incident_evidence` on denial).
+
+#### Example 1: Create a Verification Request (`POST /verification-requests`)
+```bash
+curl -X POST http://127.0.0.1:8000/verification-requests \
+  -H "Content-Type: application/json" \
+  -d '{"transaction_id": "TX-0391"}'
+```
+
+#### Example 2: Respond with a Denial (`POST /verification-requests/VER-0001/respond`)
+```bash
+curl -X POST http://127.0.0.1:8000/verification-requests/VER-0001/respond \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_response": "denied",
+    "response_notes": "I did not add this beneficiary or initiate this transfer."
+  }'
+```
+
+#### Example Success Response (`200 OK`)
+```json
+{
+  "request_id": "VER-0001",
+  "transaction_id": "TX-0391",
+  "user_id": "USR-001",
+  "user_display_name": "Aarav Sharma (University Student)",
+  "amount": 157.55,
+  "currency": "USD",
+  "beneficiary_id": "BEN-ATO-NEW-001",
+  "beneficiary_name": "Unverified Instant Wallet #1",
+  "status": "denied_suspicious",
+  "created_at_utc": "2026-10-27T00:58:00Z",
+  "responded_at_utc": "2026-10-27T00:58:10Z",
+  "user_response": "denied",
+  "response_notes": "I did not add this beneficiary or initiate this transfer.",
+  "linked_incident_id": "INC-0001",
+  "created_new": false
+}
+```
+
+#### Important Error Responses
+- `404 Not Found`: Unknown `transaction_id` or `request_id`.
+- `409 Conflict`: Attempting to flip an already finalized verification request from `'denied'` to `'approved'` (or vice versa).
+
+---
+
+### 12. Incident Register & SHA-256 Integrity Check — `GET /incidents`, `GET /incidents/{incident_id}`, `PATCH /incidents/{incident_id}`
+- **Method & Path:**
+  - `GET /incidents` (optional `status`, `severity`, `user_id` filters)
+  - `GET /incidents/{incident_id}`
+  - `PATCH /incidents/{incident_id}`
+- **What it does:** Lists and retrieves forensic incidents created when a user denies a transaction, and allows investigators to update lifecycle status (`open` → `investigating` → `closed`) with audit notes while preserving all linked evidence records.
+- **Service Called:** [`list_incidents`](app/services/incidents.py), [`get_incident_detail`](app/services/incidents.py), [`update_incident_status`](app/services/incidents.py).
+- **Plain-Language Explanation:** When a transaction is denied, an investigator needs one dossier containing the transaction, the sender's OpEx/CapEx/Net-Worth profile, the verification denial, all linked timeline records (`incident_evidence`), advisory next steps (`recommended_actions`), and a live **SHA-256 Tamper-Evident Integrity Check** (`evidence_integrity`) verifying the snapshot captured at escalation time has not been altered.
+
+#### Example `PATCH` Request (`PATCH /incidents/INC-0001`)
+```bash
+curl -X PATCH http://127.0.0.1:8000/incidents/INC-0001 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "investigating",
+    "investigator_note": "Reviewing NL-Amsterdam impossible travel hop and new beneficiary."
+  }'
+```
+
+#### Example `GET /incidents/INC-0001` Response (`200 OK`, abbreviated)
+```json
+{
+  "incident": {
+    "incident_id": "INC-0001",
+    "transaction_id": "TX-0391",
+    "verification_request_id": "VER-0001",
+    "user_id": "USR-001",
+    "status": "investigating",
+    "severity": "critical",
+    "risk_score_at_creation": 100,
+    "scoring_method_used": "contextual_ti",
+    "evidence_sha256": "8c4e...64_hex_chars"
+  },
+  "recommended_actions": [
+    "1. [Advisory Only] Review the user's signed denial statement and contact the account holder out-of-band.",
+    "4. [Session Forensics Playbook] Audit authentication logs for the unseen device and impossible-travel IP hop; recommend credential reset in a real environment."
+  ],
+  "evidence_integrity": {
+    "stored_sha256": "8c4e...64_hex_chars",
+    "recomputed_sha256": "8c4e...64_hex_chars",
+    "integrity_verified": true,
+    "verification_message": "Verified: Stored forensic snapshot matches its SHA-256 digest."
+  },
+  "transaction": {...},
+  "user_profile": {...},
+  "verification_request": {...},
+  "risk_evaluation": {...},
+  "linked_evidence": [...]
+}
+```
+
+---
+
+### 13. Frontend Dashboard KPI Summary — `GET /dashboard/summary`
+- **Method & Path:** `GET /dashboard/summary`
+- **What it does:** Returns a single JSON payload for the home dashboard containing total users, user counts by `expenditure_model` (`opex_heavy`, `capex_heavy`, `personal_consumption`), total transactions, verification counts (`pending`, `confirmed_legitimate`, `denied_suspicious`), incident counts (`open`, `investigating`, `closed`), and the 10 most recent transactions.
+- **Service Called:** [`get_dashboard_summary`](app/services/evaluation.py).
+- **Reads/Writes Data:** Read-only.
+
+#### Example Request
+```bash
+curl -X GET http://127.0.0.1:8000/dashboard/summary
+```
+
+---
+
+### 14. Reproducible Evaluation Metrics & Curves — `GET /evaluation/metrics`
+- **Method & Path:** `GET /evaluation/metrics`
+- **Query Parameters:**
+  - `threshold` *(optional, default `60`, range `10–95`)*: Fixed risk-score threshold used to convert `risk_score` into a binary positive prediction (`score >= threshold`).
+  - `use_user_preferences_threshold` *(optional, default `false`)*: If `true`, evaluates each transaction against its owner's configured `risk_threshold` from `user_preferences`.
+- **Service Called:** [`compute_evaluation_report`](app/services/evaluation.py).
+- **Reads/Writes Data:** Read-only evaluation over all 500 synthetic transactions.
+- **Plain-Language Explanation:** Computes live, non-hardcoded evaluation metrics comparing `baseline`, `contextual`, and `contextual_ti`:
+  - `methods_comparison`: Confusion matrix (`TP`, `FP`, `TN`, `FN`), `precision`, `recall`, `f1_score`, `false_positive_rate`, `flagged_count`, `flagged_percentage`, `ato_scenario_detection_rate`, `bec_scenario_detection_rate`, `structuring_scenario_detection_rate`, and `capex_false_positive_rate`.
+  - `per_scenario_breakdown`: Flagging rates across all 8 synthetic scenario archetypes.
+  - `per_expenditure_model_breakdown`: Precision, Recall, F1, and False-Positive Rate stratified by `capex_heavy`, `opex_heavy`, and `personal_consumption`.
+  - `threshold_tradeoff_curve`: Precision, Recall, F1, FPR, and Alert Volume across thresholds `[20, 30, 40, 50, 60, 70, 80, 90]` for plotting trade-off curves in the UI.
+
+---
+
+## Complete Frontend Integration Endpoint Map
+
+| UI Screen / Feature | HTTP Method & Path | Description |
+| :--- | :--- | :--- |
+| **Health Status** | `GET /health` | Check if backend is online |
+| **Dashboard Overview** | `GET /dashboard/summary` | KPI totals, user profile counts, incident counts, 10 newest transactions |
+| **User Profiles List** | `GET /users` | List all 12 users with OpEx/CapEx, industry, net worth, turnover, max tx |
+| **Single User Profile** | `GET /users/{user_id}` | Get one user's financial & business profile |
+| **Transactions List** | `GET /transactions` | Paginated & filterable transaction list (`limit`, `offset`, `user_id`, `expenditure_model`, `profile_type`, `beneficiary_category`) |
+| **Transaction Detail** | `GET /transactions/{transaction_id}` | Transaction + sender profile + raw auth, device, and beneficiary events |
+| **Rule Catalog** | `GET /risk/rules` | Documented rule weights and descriptions |
+| **Single Risk Score** | `GET /transactions/{transaction_id}/risk?method=contextual` | 0–100 score, triggered rules, evidence refs, and counterfactual summary |
+| **3-Method Comparison** | `GET /transactions/{transaction_id}/risk/compare` | Side-by-side `baseline` vs `contextual` vs `contextual_ti` waterfall diff |
+| **Forensic Timeline** | `GET /transactions/{transaction_id}/timeline` | Chronological evidence timeline with Kill-Chain phase tags |
+| **Get User Preferences** | `GET /preferences/{user_id}` | Read user's threshold, critical bypass, IANA timezone, and quiet hours |
+| **Save User Preferences** | `PUT /preferences/{user_id}` | Update user's threshold, critical bypass, IANA timezone, and quiet hours |
+| **Alert Policy & What-If** | `GET /transactions/{transaction_id}/alert-decision` | Evaluate `ALERT_NOW`, `QUEUED_FOR_QUIET_HOURS`, `ALERT_NOW_CRITICAL_BYPASS`, or `NO_ALERT_BELOW_THRESHOLD` (supports `override_*` params) |
+| **List Verifications** | `GET /verification-requests` | List verification requests (`status`, `user_id`) |
+| **Create Verification** | `POST /verification-requests` | Create pending verification prompt (`{"transaction_id": "..."}`) |
+| **Respond Verification** | `POST /verification-requests/{request_id}/respond` | Submit `"approved"` or `"denied"` (denial auto-creates incident + SHA-256 snapshot) |
+| **List Incidents** | `GET /incidents` | List incidents (`status`, `severity`, `user_id`) |
+| **Incident Dossier** | `GET /incidents/{incident_id}` | Full incident detail, BEC/ATO playbook, linked evidence, and live SHA-256 integrity verification |
+| **Update Incident Status** | `PATCH /incidents/{incident_id}` | Update status (`open`, `investigating`, `closed`) and investigator note |
+| **Evaluation Metrics** | `GET /evaluation/metrics` | Live Confusion Matrices, Precision/Recall/F1/FPR, Per-Scenario & OpEx/CapEx tables, and Threshold Curves |
+
+
+
+
+
 

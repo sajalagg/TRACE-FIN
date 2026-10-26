@@ -9,10 +9,12 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
-# Local SQLite databases
+# Local SQLite databases and generated evaluation exports
 *.db
 *.sqlite
 *.sqlite3
+data/*.json
+data/*.csv
 
 # Environment variables
 .env

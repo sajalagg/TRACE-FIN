@@ -222,3 +222,330 @@ class TransactionTimelineResponseSchema(BaseModel):
     timeline: List[TimelineEntrySchema]
 
 
+class UserPreferencesSchema(BaseModel):
+    """Schema for a user's stored alert policy preferences."""
+
+    user_id: str
+    risk_threshold: int = Field(
+        ge=10,
+        le=95,
+        description="Rule-based risk score threshold (10-95). Not a probability.",
+    )
+    critical_bypass_threshold: int = Field(
+        ge=50,
+        le=100,
+        description="Critical risk score threshold (50-100) that bypasses quiet hours for immediate review.",
+    )
+    timezone_iana: str = Field(
+        description="IANA time zone identifier (e.g., 'Asia/Kolkata', 'Europe/London', 'America/New_York')."
+    )
+    quiet_hours_enabled: bool
+    quiet_hours_start: str = Field(
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+        description="24-hour local start time in HH:MM format (e.g., '22:00').",
+    )
+    quiet_hours_end: str = Field(
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+        description="24-hour local end time in HH:MM format (e.g., '07:00').",
+    )
+    updated_at_utc: str
+
+
+class UserPreferencesUpdateSchema(BaseModel):
+    """Request body schema for updating a user's alert preferences (`PUT /preferences/{user_id}`)."""
+
+    risk_threshold: int = Field(
+        ge=10,
+        le=95,
+        description="Rule-based risk score threshold (10-95). Not a probability.",
+    )
+    critical_bypass_threshold: int = Field(
+        default=85,
+        ge=50,
+        le=100,
+        description="Critical score threshold (50-100) that bypasses quiet hours.",
+    )
+    timezone_iana: str = Field(
+        description="Valid IANA time zone (e.g., 'Asia/Kolkata', 'Europe/London')."
+    )
+    quiet_hours_enabled: bool = True
+    quiet_hours_start: str = Field(
+        default="22:00",
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+    )
+    quiet_hours_end: str = Field(
+        default="07:00",
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+    )
+
+
+class AlertDecisionResponseSchema(BaseModel):
+    """Result of evaluating a transaction's risk score against a user's alert policy."""
+
+    transaction_id: str
+    user_id: str
+    scoring_method: str
+    risk_score: int = Field(
+        ge=0,
+        le=100,
+        description="Underlying rule-based risk score (unchanged by alert preferences).",
+    )
+    risk_band: str
+    applied_preferences: UserPreferencesSchema
+    is_what_if_simulation: bool = Field(
+        description="True if temporary query-parameter overrides were used instead of stored preferences."
+    )
+    transaction_timestamp_utc: str
+    transaction_local_time: str = Field(
+        description="Transaction timestamp converted to the user's configured IANA time zone."
+    )
+    within_quiet_hours: bool
+    exceeds_risk_threshold: bool
+    exceeds_critical_bypass: bool
+    alert_decision: str = Field(
+        description="'NO_ALERT_BELOW_THRESHOLD', 'ALERT_NOW', 'QUEUED_FOR_QUIET_HOURS', or 'ALERT_NOW_CRITICAL_BYPASS'"
+    )
+    decision_explanation: str
+    policy_disclaimer: str
+
+
+class VerificationRequestCreateSchema(BaseModel):
+    """Request body for `POST /verification-requests`."""
+
+    transaction_id: str = Field(description="ID of the transaction to send for user verification (e.g., 'TX-0391').")
+
+
+class VerificationRespondSchema(BaseModel):
+    """Request body for `POST /verification-requests/{request_id}/respond`."""
+
+    user_response: str = Field(
+        pattern=r"^(approved|denied)$",
+        description="'approved' ('I made this transaction') or 'denied' ('I did not make this transaction').",
+    )
+    response_notes: Optional[str] = Field(
+        default=None,
+        description="Optional context note from the simulated user.",
+    )
+
+
+class VerificationRequestSchema(BaseModel):
+    """Response schema representing a simulated transaction verification request."""
+
+    request_id: str
+    transaction_id: str
+    user_id: str
+    user_display_name: str
+    amount: float
+    currency: str
+    beneficiary_id: str
+    beneficiary_name: str
+    status: str = Field(
+        description="'pending', 'confirmed_legitimate', or 'denied_suspicious'"
+    )
+    created_at_utc: str
+    responded_at_utc: Optional[str] = None
+    user_response: Optional[str] = None
+    response_notes: Optional[str] = None
+    linked_incident_id: Optional[str] = Field(
+        default=None,
+        description="Populated when user_response == 'denied' and an incident is created/linked.",
+    )
+    created_new: bool = Field(
+        default=True,
+        description="False when returning an existing verification request to prevent duplicates.",
+    )
+
+
+class IncidentEvidenceSchema(BaseModel):
+    """Schema for an individual evidence record linked to an incident."""
+
+    evidence_id: str
+    incident_id: str
+    evidence_type: str
+    source_record_id: str = Field(
+        description="Original table and primary key reference (e.g., 'authentication_events:AUTH-EVT-0392')."
+    )
+    timestamp_utc: str
+    explanation: str
+
+
+class EvidenceIntegritySchema(BaseModel):
+    """Tamper-evident SHA-256 verification status for an incident's forensic snapshot."""
+
+    stored_sha256: str
+    recomputed_sha256: str
+    integrity_verified: bool
+    verification_message: str
+
+
+class IncidentSummarySchema(BaseModel):
+    """Summary schema for listing incidents (`GET /incidents`)."""
+
+    incident_id: str
+    transaction_id: str
+    verification_request_id: Optional[str] = None
+    user_id: str
+    user_display_name: str
+    user_profile_type: str
+    user_expenditure_model: str
+    amount: float
+    currency: str
+    beneficiary_name: str
+    status: str = Field(description="'open', 'investigating', or 'closed'")
+    severity: str = Field(description="'low', 'medium', 'high', or 'critical'")
+    risk_score_at_creation: int
+    scoring_method_used: str
+    summary_reason: str
+    evidence_sha256: str
+    created_at_utc: str
+    updated_at_utc: str
+
+
+class IncidentDetailResponseSchema(BaseModel):
+    """Comprehensive detail schema for `GET /incidents/{incident_id}`."""
+
+    incident: IncidentSummarySchema
+    recommended_actions: List[str] = Field(
+        description="Advisory next steps for the investigator (suggestions only, not automated actions)."
+    )
+    evidence_integrity: EvidenceIntegritySchema
+    transaction: TransactionSummarySchema
+    user_profile: UserProfileSchema
+    verification_request: Optional[VerificationRequestSchema] = None
+    risk_evaluation: RiskScoreResponseSchema
+    linked_evidence: List[IncidentEvidenceSchema]
+
+
+class IncidentStatusUpdateSchema(BaseModel):
+    """Request body for `PATCH /incidents/{incident_id}`."""
+
+    status: str = Field(
+        pattern=r"^(open|investigating|closed)$",
+        description="New lifecycle status: 'open', 'investigating', or 'closed'.",
+    )
+    investigator_note: Optional[str] = Field(
+        default=None,
+        description="Optional investigator audit note recorded with the status change.",
+    )
+
+
+class DashboardSummarySchema(BaseModel):
+    """Overview KPI metrics and recent activity for the frontend dashboard (`GET /dashboard/summary`)."""
+
+    disclaimer: str
+    total_users: int
+    users_by_expenditure_model: dict[str, int]
+    total_transactions: int
+    pending_verifications_count: int
+    confirmed_verifications_count: int
+    denied_verifications_count: int
+    open_incidents_count: int
+    investigating_incidents_count: int
+    closed_incidents_count: int
+    recent_transactions: List[TransactionSummarySchema]
+
+
+class ConfusionMatrixSchema(BaseModel):
+    """Standard binary classification confusion matrix counts."""
+
+    true_positives: int = Field(description="Suspicious transactions correctly flagged (score >= threshold).")
+    false_positives: int = Field(description="Legitimate transactions falsely flagged (score >= threshold).")
+    true_negatives: int = Field(description="Legitimate transactions correctly unflagged (score < threshold).")
+    false_negatives: int = Field(description="Suspicious transactions missed (score < threshold).")
+
+
+class MethodEvaluationMetricsSchema(BaseModel):
+    """Aggregate evaluation metrics for one scoring approach on the synthetic dataset."""
+
+    method: str
+    threshold_mode: str = Field(description="'fixed' or 'per_user_preference'")
+    fixed_threshold: Optional[int] = None
+    total_transactions: int
+    total_suspicious_ground_truth: int
+    total_legitimate_ground_truth: int
+    confusion_matrix: ConfusionMatrixSchema
+    precision: float
+    recall: float
+    f1_score: float
+    false_positive_rate: float
+    flagged_count: int
+    flagged_percentage: float
+    ato_scenario_detection_rate: float = Field(
+        description="Recall on 'low_and_slow_ato' account-takeover transactions."
+    )
+    bec_scenario_detection_rate: float = Field(
+        description="Recall on 'b2b_vendor_bec_tamper' vendor bank-modification transactions."
+    )
+    structuring_scenario_detection_rate: float = Field(
+        description="Recall on 'structured_smurfing_drain' split-transfer transactions."
+    )
+    capex_false_positive_rate: float = Field(
+        description="False-positive rate on 'legitimate_capex_high_value' corporate CapEx purchases."
+    )
+
+
+class ScenarioBreakdownItemSchema(BaseModel):
+    """Per-scenario flagging rates across all three scoring approaches."""
+
+    scenario_label: str
+    ground_truth_class: str = Field(description="'suspicious', 'legitimate', or 'mixed'")
+    total_cases: int
+    suspicious_cases: int
+    legitimate_cases: int
+    baseline_flagged_count: int
+    baseline_flagged_rate: float
+    contextual_flagged_count: int
+    contextual_flagged_rate: float
+    contextual_ti_flagged_count: int
+    contextual_ti_flagged_rate: float
+
+
+class ExpenditureModelBreakdownSchema(BaseModel):
+    """Evaluation metrics stratified by user expenditure model (opex_heavy, capex_heavy, personal_consumption)."""
+
+    expenditure_model: str
+    total_transactions: int
+    baseline_precision: float
+    baseline_recall: float
+    baseline_f1: float
+    baseline_fpr: float
+    contextual_precision: float
+    contextual_recall: float
+    contextual_f1: float
+    contextual_fpr: float
+    contextual_ti_precision: float
+    contextual_ti_recall: float
+    contextual_ti_f1: float
+    contextual_ti_fpr: float
+
+
+class ThresholdTradeoffPointSchema(BaseModel):
+    """Alert volume and detection metrics at a specific score threshold."""
+
+    threshold: int
+    method: str
+    flagged_count: int
+    flagged_percentage: float
+    precision: float
+    recall: float
+    f1_score: float
+    false_positive_rate: float
+
+
+class EvaluationReportResponseSchema(BaseModel):
+    """Complete Stage 10 reproducible evaluation report (`GET /evaluation/metrics`)."""
+
+    evaluation_disclaimer: str
+    positive_prediction_definition: str
+    threshold_evaluated: int
+    use_user_preferences_threshold: bool
+    methods_comparison: dict[str, MethodEvaluationMetricsSchema]
+    per_scenario_breakdown: List[ScenarioBreakdownItemSchema]
+    per_expenditure_model_breakdown: List[ExpenditureModelBreakdownSchema]
+    threshold_tradeoff_curve: List[ThresholdTradeoffPointSchema]
+
+
+
+
+
+
