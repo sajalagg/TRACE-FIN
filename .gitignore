@@ -1,0 +1,21 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables
+.env
+
+# macOS system files
+.DS_Store
