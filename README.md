@@ -45,7 +45,7 @@ Streamlit UI  --->  FastAPI REST API  --->  Service Layer  --->  SQLite Database
 
 ---
 
-## Quickstart (Current Stage: Stage 2)
+## Quickstart (Complete Backend Ready for Frontend Integration)
 
 ```bash
 # 1. Activate the virtual environment
@@ -54,14 +54,17 @@ source .venv/bin/activate
 # 2. Seed and inspect the deterministic synthetic SQLite database (500 transactions)
 python -m scripts.seed_demo_data
 
-# 3. Run the automated test suite
+# 3. Run the reproducible evaluation and export paper tables (JSON + CSV)
+python -m scripts.run_evaluation
+
+# 4. Run the full automated test suite (33 tests)
 pytest -v
 
-# 4. Start the FastAPI backend
+# 5. Start the FastAPI backend (CORS enabled for frontend integration)
 uvicorn app.main:app --reload
 ```
 
-Once running, test the health endpoint at `http://127.0.0.1:8000/health` or open interactive Swagger docs at `http://127.0.0.1:8000/docs`. See [API_GUIDE.md](API_GUIDE.md) for endpoint details.
+Once running, test the health endpoint at `http://127.0.0.1:8000/health` or open interactive Swagger docs at `http://127.0.0.1:8000/docs`. See [API_GUIDE.md](API_GUIDE.md) for the complete frontend integration endpoint table and JSON schemas.
 
 ---
 
@@ -72,12 +75,11 @@ We are building TRACE-Fin incrementally:
 - **Stage 2:** SQLite schema (User Financial/Business Profiles, BEC, Structuring, Geo-Velocity) & reproducible synthetic data seeding ✅
 - **Stage 3:** Read-only transaction & user profile API (`GET /users`, `GET /transactions`, `GET /transactions/{id}`) ✅
 - **Stage 4:** Explainable rule-based scoring engine (3 comparable methods + counterfactuals + side-by-side comparison) ✅
-- **Stage 5:** Unified forensic evidence timeline with Kill-Chain phase tagging ✅ *(Current)*
-- **Stage 6:** User alert preferences (thresholds, time zones, quiet hours, What-If policy simulator)
-- **Stage 7:** Simulated transaction verification workflow
-- **Stage 8:** Incident register and lifecycle management
-- **Stage 9:** Streamlit user interface
-- **Stage 10:** Reproducible evaluation metrics and threshold curves
-- **Stage 11:** Final polish, diagrams, and paper tables
+- **Stage 5:** Unified forensic evidence timeline with Kill-Chain phase tagging ✅
+- **Stage 6:** User alert preferences (thresholds, time zones, quiet hours, What-If policy simulator) ✅
+- **Stage 7:** Simulated transaction verification workflow (`POST /verification-requests`, `POST /verification-requests/{id}/respond`) ✅
+- **Stage 8:** Incident register, lifecycle management, and SHA-256 tamper-evident integrity verification ✅
+- **Stage 10 (Backend):** Reproducible evaluation engine (`GET /evaluation/metrics`, `GET /dashboard/summary`, `scripts/run_evaluation.py`) & CORS setup ✅ *(Current — Backend 100% Complete)*
+- **Next:** Integrate mentor's frontend with FastAPI backend & finalize paper tables
 
 See [TRACE-Fin_PROJECT_GUIDE.md](TRACE-Fin_PROJECT_GUIDE.md) for the complete stage-by-step specification.
