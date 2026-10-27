@@ -12,9 +12,7 @@ from services.data_provider import (
     create_beneficiary_live,
     get_user_beneficiaries_list,
 )
-from ui.components import fmt_ts, render_demo_banner
-
-render_demo_banner()
+from ui.components import fmt_ts
 
 auth_user = st.session_state.get("auth_user") or {}
 uid = auth_user.get("user_id", "USR-001")
@@ -73,7 +71,7 @@ with col_add:
         "Action",
         options=[
             "Add a New Beneficiary",
-            "Update Bank Routing for an Existing Beneficiary (Simulates Vendor BEC Notice)",
+            "Update Bank Routing for an Existing Beneficiary",
         ],
         key="cust_ben_action_mode",
     )

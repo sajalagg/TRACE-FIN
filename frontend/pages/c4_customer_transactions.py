@@ -12,14 +12,11 @@ from services.data_provider import get_transactions
 from ui.components import (
     fmt_currency,
     fmt_ts,
-    render_demo_banner,
     render_empty_state,
     render_two_line_customer_explainer,
     risk_badge_html,
     status_badge_html,
 )
-
-render_demo_banner()
 
 auth_user = st.session_state.get("auth_user") or {}
 uid = auth_user.get("user_id", "USR-001")

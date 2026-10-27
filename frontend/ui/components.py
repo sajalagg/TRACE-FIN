@@ -478,7 +478,7 @@ def render_two_line_customer_explainer(
     reasons: Optional[List[str]] = None,
 ) -> None:
     """Render a concise 2-line plain-language explainer when a customer's transfer is rated Medium or Higher."""
-    if tx_status == "COMPLETED" and risk_score < 40:
+    if tx_status in ("COMPLETED", "Settled") and risk_score < 40:
         return
 
     reason_snippet = (
@@ -486,7 +486,28 @@ def render_two_line_customer_explainer(
         if reasons
         else "This transfer differed from your usual sign-in location, device, or beneficiary pattern."
     )
-    if tx_status == "HELD_HIGH_RISK" or risk_score >= 75:
+    if tx_status in ("BLOCKED", "Blocked"):
+        border_col = "#DC2626"
+        bg_col = "#3B0A0A"
+        line1 = (
+            f"🛑 <b>Thank you for your response — the transaction is blocked (Score: {risk_score}/100)</b> "
+            "and your account balance was <b>not</b> deducted."
+        )
+        line2 = (
+            f"<b>Why &amp; Resolution:</b> {reason_snippet} "
+            "This transfer has been permanently blocked with no administrator action required."
+        )
+    elif tx_status in ("COMPLETED", "Settled"):
+        border_col = "#10B981"
+        bg_col = "#07291B"
+        line1 = (
+            f"✅ <b>Transfer Verified &amp; Completed (Score: {risk_score}/100)</b> — "
+            "Your confirmation was recorded and the transfer has been settled."
+        )
+        line2 = (
+            f"<b>Security Context:</b> {reason_snippet}"
+        )
+    elif tx_status == "HELD_HIGH_RISK" or risk_score >= 75:
         border_col = "#EF4444"
         bg_col = "#2A1215"
         line1 = (
@@ -495,29 +516,18 @@ def render_two_line_customer_explainer(
         )
         line2 = (
             f"🔍 <b>Why &amp; Next Step:</b> {reason_snippet} "
-            "Please confirm or deny this activity in <b>Security Alerts</b>; an administrator will also verify with you in the Risk Analysis Lab before releasing funds."
-        )
-    elif tx_status == "BLOCKED":
-        border_col = "#DC2626"
-        bg_col = "#3B0A0A"
-        line1 = (
-            f"🛑 <b>Transfer Blocked &amp; Protected (Score: {risk_score}/100)</b> — "
-            "Your account balance was <b>not</b> deducted."
-        )
-        line2 = (
-            f"<b>Why &amp; Next Step:</b> {reason_snippet} "
-            "This transfer was denied and logged as a protected security incident."
+            "Deny in <b>Security Alerts</b> to block immediately, or approve to forward to an administrator in the Risk Analysis Lab for release."
         )
     else:
         border_col = "#F59E0B"
         bg_col = "#281D0A"
         line1 = (
-            f"⚠️ <b>Additional Verification Needed (Score: {risk_score}/100)</b> — "
-            "Your balance has <b>not</b> been deducted while this transfer awaits confirmation."
+            f"⚠️ <b>Medium-Risk Verification Needed (Score: {risk_score}/100)</b> — "
+            "Your balance has <b>not</b> been deducted while awaiting your response."
         )
         line2 = (
             f"🛡️ <b>Why &amp; Next Step:</b> {reason_snippet} "
-            "Confirm that you authorized this transfer in <b>Security Alerts</b> (or via administrator review) to complete it."
+            "Approve in <b>Security Alerts</b> to complete the transfer immediately (no administrator review needed), or deny to block it right away."
         )
 
     st.markdown(

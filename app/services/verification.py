@@ -253,10 +253,18 @@ def respond_to_verification_request(
         if payload.user_response == "denied":
             conn.execute(
                 """
+                UPDATE verification_requests
+                SET requires_admin_release = 0
+                WHERE request_id = ?;
+                """,
+                (request_id,),
+            )
+            conn.execute(
+                """
                 UPDATE transactions
                 SET status = 'BLOCKED',
                     balance_deducted = 0,
-                    decision_reason = 'Blocked following customer denial on verification request.'
+                    decision_reason = 'Thank you for your response — the transaction is blocked and your simulated balance was not deducted.'
                 WHERE transaction_id = ?;
                 """,
                 (req_row["transaction_id"],),
@@ -302,7 +310,7 @@ def respond_to_verification_request(
                         UPDATE transactions
                         SET status = 'COMPLETED',
                             balance_deducted = 1,
-                            decision_reason = 'Approved by customer verification; simulated transfer completed.'
+                            decision_reason = 'Thank you for your confirmation — your transfer has been approved and completed.'
                         WHERE transaction_id = ?;
                         """,
                         (req_row["transaction_id"],),

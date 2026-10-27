@@ -14,9 +14,7 @@ from services.data_provider import (
     get_verification_requests_live,
     respond_verification_request_live,
 )
-from ui.components import fmt_currency, fmt_ts, render_demo_banner, status_badge_html
-
-render_demo_banner()
+from ui.components import fmt_currency, fmt_ts, status_badge_html
 
 auth_user = st.session_state.get("auth_user") or {}
 uid = auth_user.get("user_id", "USR-001")
@@ -24,10 +22,36 @@ uid = auth_user.get("user_id", "USR-001")
 st.markdown("# 🚨 Security Alerts & Verification")
 st.markdown(
     '<div style="color:#8A9CB0;font-size:0.85rem;margin-top:-10px;margin-bottom:18px">'
-    'Confirm or deny unusual transfers on your account. Denying a transfer immediately blocks it and '
-    'opens a protected security incident; high-risk holds are also reviewed by an administrator in the Risk Analysis Lab.</div>',
+    'Confirm or deny unusual transfers on your account. <b>Medium-risk alerts</b> complete immediately when you approve '
+    'them (no administrator approval needed). <b>Denying any alert</b> immediately blocks the transaction without '
+    'sending it to an administrator. Only <b>High-risk alerts approved by you</b> go to an administrator in the Risk Analysis Lab.</div>',
     unsafe_allow_html=True,
 )
+
+flash = st.session_state.pop("cust_alert_flash", None)
+if flash:
+    f_type = flash.get("type", "success")
+    f_msg = flash.get("message", "")
+    if f_type == "blocked":
+        st.markdown(
+            f"""
+<div style="background:#2A0F17;border:1px solid #EF4444;border-left:5px solid #EF4444;
+border-radius:8px;padding:14px 18px;margin-bottom:16px;color:#FCA5A5;font-size:0.9rem;line-height:1.5">
+  <b>🛑 {f_msg}</b>
+</div>""",
+            unsafe_allow_html=True,
+        )
+    elif f_type == "completed":
+        st.markdown(
+            f"""
+<div style="background:#07291B;border:1px solid #10B981;border-left:5px solid #10B981;
+border-radius:8px;padding:14px 18px;margin-bottom:16px;color:#6EE7B7;font-size:0.9rem;line-height:1.5">
+  <b>✅ {f_msg}</b>
+</div>""",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info(f_msg)
 
 all_reqs = get_verification_requests_live(user_id=uid)
 pending_reqs = [r for r in all_reqs if r.get("status") in ("pending", "awaiting_admin_release")]
@@ -45,6 +69,11 @@ else:
         req_id = req["request_id"]
         tx_id = req["transaction_id"]
         needs_admin = bool(req.get("requires_admin_release"))
+        tier_note = (
+            "High-Risk Hold · Approving forwards to Admin Risk Analysis Lab; denying blocks immediately without Admin review"
+            if needs_admin
+            else "Medium-Risk Alert · Approving completes transfer immediately (no Admin needed); denying blocks immediately"
+        )
         st.markdown(
             f"""
 <div style="background:#281D0A;border:1px solid #F59E0B;border-left:4px solid #F59E0B;
@@ -58,8 +87,7 @@ border-radius:8px;padding:16px 20px;margin-bottom:10px">
         {fmt_currency(float(req["amount"]))} to {req["beneficiary_name"]} (<code>{req["beneficiary_id"]}</code>)
       </div>
       <div style="font-size:0.76rem;color:#CBD5E1;margin-top:3px">
-        Created: {fmt_ts(req["created_at_utc"])} &nbsp;·&nbsp;
-        {"Requires Administrator Release in Risk Analysis Lab after your confirmation" if needs_admin else "Step-Up Customer Confirmation"}
+        Created: {fmt_ts(req["created_at_utc"])} &nbsp;·&nbsp; {tier_note}
       </div>
     </div>
     {status_badge_html(req["status"])}
@@ -90,7 +118,22 @@ border-radius:8px;padding:16px 20px;margin-bottom:10px">
                         refreshed_u = get_user_profile(uid)
                         if refreshed_u:
                             st.session_state["auth_user"] = refreshed_u
-                        st.success(f"Recorded confirmation for `{tx_id}`.")
+                        if needs_admin:
+                            st.session_state["cust_alert_flash"] = {
+                                "type": "info",
+                                "message": (
+                                    f"Thank you for your response. Because transfer {tx_id} triggered high-risk signals, "
+                                    "your confirmation has been sent to the Administrator in the Risk Analysis Lab for final release."
+                                ),
+                            }
+                        else:
+                            st.session_state["cust_alert_flash"] = {
+                                "type": "completed",
+                                "message": (
+                                    f"Thank you for your response — your transaction ({tx_id}) has been approved and "
+                                    "completed immediately! No administrator approval was needed."
+                                ),
+                            }
                         st.rerun()
                     else:
                         st.error(res.get("error", "Could not submit response."))
@@ -107,9 +150,16 @@ border-radius:8px;padding:16px 20px;margin-bottom:10px">
                         note_val or "Customer reported unauthorized transfer in Security Alerts.",
                     )
                     if res["ok"]:
-                        st.warning(
-                            f"Transfer `{tx_id}` has been blocked and escalated to the security team."
-                        )
+                        refreshed_u = get_user_profile(uid)
+                        if refreshed_u:
+                            st.session_state["auth_user"] = refreshed_u
+                        st.session_state["cust_alert_flash"] = {
+                            "type": "blocked",
+                            "message": (
+                                f"Thank you for your response — the transaction ({tx_id}) is blocked. "
+                                "Your balance was not deducted, and no administrator action is required."
+                            ),
+                        }
                         st.rerun()
                     else:
                         st.error(res.get("error", "Could not submit response."))

@@ -1,7 +1,7 @@
 """
 PAGE 6 — Incident Register & Stage 10 Evaluation Dashboard
-Live SQLite incident lifecycle management, cryptographic SHA-256 tamper verification,
-and reproducible 3-method evaluation metrics across 500+ synthetic transactions.
+Live SQLite incident lifecycle management and reproducible 3-method evaluation
+metrics across 500+ synthetic transactions.
 """
 
 from __future__ import annotations
@@ -29,22 +29,20 @@ from ui.components import (
     fmt_ts,
     inject_css,
     plotly_layout_defaults,
-    render_demo_banner,
     status_badge_html,
 )
 
 inject_css()
-render_demo_banner()
 
 st.markdown("<h1>Incident Register &amp; Comparative Evaluation</h1>", unsafe_allow_html=True)
 st.markdown(
     '<p style="color:#8A9CB0;font-size:0.85rem;margin-bottom:16px">'
-    'Manage forensic incidents with real-time SHA-256 tamper-evident verification, '
+    'Manage forensic incidents with full evidence provenance and investigation notes, '
     'and inspect comparative Precision, Recall, F1, and False-Positive Rates across all three scoring methods.</p>',
     unsafe_allow_html=True,
 )
 
-tab_inc, tab_eval = st.tabs(["📋 Incident Register & SHA-256 Integrity", "📊 Comparative Evaluation"])
+tab_inc, tab_eval = st.tabs(["📋 Incident Register & Evidence Records", "📊 Comparative Evaluation"])
 
 # ══════════════════════════════════════════════════════════════════════════
 # TAB A: INCIDENT REGISTER
@@ -84,7 +82,9 @@ with tab_inc:
                 else "Low"
             )
             score_color = RISK_COLOR_MAP.get(risk_level, "#8A9CB0")
-            short_hash = inc.get("sha256_hash", "—")[:24] + "…"
+            summary_snippet = inc.get("summary", "—")
+            if len(summary_snippet) > 42:
+                summary_snippet = summary_snippet[:42] + "…"
 
             html_rows += f"""
 <tr style="border-bottom:1px solid #1E2D3B">
@@ -95,7 +95,7 @@ with tab_inc:
   <td style="padding:8px 10px;font-size:0.73rem;color:#8A9CB0;font-family:monospace">{fmt_ts(inc.get('created_at',''))}</td>
   <td style="padding:8px 10px;text-align:center">{status_b}</td>
   <td style="padding:8px 10px;text-align:center;font-weight:700;color:{score_color};font-family:monospace">{risk_score}/100</td>
-  <td style="padding:8px 10px;font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:#67E8F9">{short_hash}</td>
+  <td style="padding:8px 10px;font-size:0.73rem;color:#94A3B8">{summary_snippet}</td>
 </tr>"""
 
         st.markdown(
@@ -111,7 +111,7 @@ with tab_inc:
       <th style="padding:9px 10px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Created (UTC)</th>
       <th style="padding:9px 10px;text-align:center;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Status</th>
       <th style="padding:9px 10px;text-align:center;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Score</th>
-      <th style="padding:9px 10px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">SHA-256 Digest</th>
+      <th style="padding:9px 10px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Primary Escalation Reason</th>
     </tr>
   </thead>
   <tbody>{html_rows}</tbody>
@@ -125,7 +125,7 @@ with tab_inc:
 
     # ── Incident Detail, Lifecycle Update & Cryptographic Verification ─────
     st.markdown(
-        '<div class="panel-header">INCIDENT DETAIL, PLAYBOOK &amp; SHA-256 INTEGRITY VERIFICATION</div>',
+        '<div class="panel-header">INCIDENT DETAIL, AUDIT RECORD &amp; PLAYBOOK</div>',
         unsafe_allow_html=True,
     )
 
@@ -205,24 +205,19 @@ with tab_inc:
                         st.error(res.get("error", "Failed to update incident."))
 
             with id2:
-                integrity = sel_inc.get("evidence_integrity", {})
-                is_valid = integrity.get("integrity_verified", True)
-                int_col = "#10B981" if is_valid else "#EF4444"
-                int_title = (
-                    "✅ CRYPTOGRAPHIC SHA-256 INTEGRITY VERIFIED (TAMPER-EVIDENT SNAPSHOT INTACT)"
-                    if is_valid
-                    else "🚨 TAMPER DETECTED — STORED SHA-256 DOES NOT MATCH RECOMPUTED SNAPSHOT"
-                )
-
+                linked_ev_list = sel_inc.get("linked_evidence", [])
                 st.markdown(
                     f"""
-<div style="padding:12px 16px;background:{int_col}14;border:1px solid {int_col}55;border-left:4px solid {int_col};
+<div style="padding:14px 18px;background:#09121B;border:1px solid #223342;border-left:4px solid #21D4C2;
 border-radius:8px;margin-bottom:14px">
-  <div style="font-size:0.8rem;font-weight:700;color:{int_col};margin-bottom:4px">{int_title}</div>
-  <div style="font-size:0.75rem;color:#CBD5E1;margin-bottom:6px">{integrity.get("verification_message","")}</div>
-  <div style="font-family:'JetBrains Mono',monospace;font-size:0.69rem;color:#94A3B8;word-break:break-all">
-    Stored SHA-256: &nbsp;&nbsp;&nbsp;<span style="color:#21D4C2">{integrity.get("stored_sha256", sel_inc.get("sha256_hash",""))}</span><br>
-    Recomputed SHA-256: <span style="color:{int_col}">{integrity.get("recomputed_sha256", sel_inc.get("sha256_hash",""))}</span>
+  <div style="font-size:0.8rem;font-weight:700;color:#21D4C2;margin-bottom:6px">INCIDENT AUDIT RECORD &amp; TELEMETRY PROVENANCE</div>
+  <div style="font-size:0.75rem;color:#CBD5E1;margin-bottom:8px">
+    Originating Case: <code style="color:#21D4C2">{sel_inc.get('tx_id','—')}</code> &nbsp;·&nbsp;
+    Created: <span style="color:#F1F5F9;font-family:monospace">{fmt_ts(sel_inc.get('created_at',''))}</span> &nbsp;·&nbsp;
+    Evidence Records: <b style="color:#F1F5F9">{len(linked_ev_list)}</b>
+  </div>
+  <div style="font-size:0.75rem;color:#94A3B8;line-height:1.4">
+    {sel_inc.get('summary', 'No summary details recorded.')}
   </div>
 </div>
 """,
@@ -511,7 +506,7 @@ with tab_eval:
 <table style="width:100%;border-collapse:collapse;background:#0E1720">
   <thead>
     <tr style="background:#091119;border-bottom:2px solid #223342">
-      <th style="padding:9px 12px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Scenario Archetype</th>
+      <th style="padding:9px 12px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Detection Pattern</th>
       <th style="padding:9px 12px;text-align:center;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Ground Truth Class</th>
       <th style="padding:9px 12px;text-align:center;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Cases</th>
       <th style="padding:9px 12px;text-align:center;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">M1 Flagged Rate</th>

@@ -15,13 +15,10 @@ from services.data_provider import (
 )
 from ui.components import (
     fmt_currency,
-    render_demo_banner,
     render_two_line_customer_explainer,
     risk_badge_html,
     status_badge_html,
 )
-
-render_demo_banner()
 
 auth_user = st.session_state.get("auth_user") or {}
 auth_session = st.session_state.get("auth_session") or {}
