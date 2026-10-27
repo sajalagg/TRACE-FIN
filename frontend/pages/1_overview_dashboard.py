@@ -266,6 +266,6 @@ with col_atk:
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(
     '<div style="text-align:center;color:#64748B;font-size:0.7rem;padding:12px 0;border-top:1px solid #1E2D3B">'
-    'TRACE-Fin v2.0 · Simulated Digital Banking &amp; Forensic Risk Protection</div>',
+    'TRACE-Fin v2.0 · Digital Banking &amp; Forensic Risk Protection</div>',
     unsafe_allow_html=True,
 )

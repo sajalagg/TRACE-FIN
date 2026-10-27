@@ -50,7 +50,7 @@ role = auth_user.get("role") if auth_token else None
 # ── Build Role-Gated Navigation ────────────────────────────────────────────
 if not auth_token or not role:
     pages = [
-        st.Page("pages/0_landing_auth.py", title="Welcome & Sign In", icon="🔐", default=True),
+        st.Page("pages/0_landing_auth.py", title="Welcome & Sign In", default=True),
     ]
 elif role == "admin":
     pages = [
@@ -90,7 +90,7 @@ if auth_token and role == "customer":
     {auth_user.get("display_name","Customer")}
   </div>
   <div style="font-size:0.95rem;font-weight:700;color:#10B981;margin-top:6px">
-    {fmt_currency(bal)} <span style="font-size:0.65rem;color:#8A9CB0;font-weight:500">Simulated</span>
+    {fmt_currency(bal)}
   </div>
   <div style="font-size:0.68rem;color:#94A3B8;margin-top:6px;padding-top:6px;border-top:1px solid #1E2D3B">
     📍 {auth_session.get("geo_location","—")} · <code>{auth_session.get("ip_address","—")}</code>
@@ -134,18 +134,6 @@ elif auth_token and role == "admin":
         if st.button("🔄 Refresh Data Cache", use_container_width=True, key="admin_refresh_btn"):
             invalidate_dataset_cache()
             st.rerun()
-else:
-    st.sidebar.markdown(
-        '<div style="font-size:0.74rem;color:#94A3B8;padding:6px 4px 10px;line-height:1.5">'
-        'Sign in as a <b>Customer</b> to manage beneficiaries, transfer simulated funds, and respond to security alerts, '
-        'or sign in as an <b>Administrator</b> to investigate flagged transfers in the Risk Analysis Lab.</div>',
-        unsafe_allow_html=True,
-    )
-
-st.sidebar.markdown(
-    f'<div style="font-size:0.64rem;color:#64748B;padding:4px 4px 8px">{APP_VERSION}</div>',
-    unsafe_allow_html=True,
-)
 
 if not health["connected"]:
     render_error(

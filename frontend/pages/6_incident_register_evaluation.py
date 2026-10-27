@@ -465,7 +465,7 @@ with tab_eval:
 <table style="width:100%;border-collapse:collapse;background:#0E1720">
   <thead>
     <tr style="background:#091119;border-bottom:2px solid #223342">
-      <th style="padding:9px 12px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Expenditure Model</th>
+      <th style="padding:9px 12px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Expense Type</th>
       <th style="padding:9px 12px;text-align:center;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Sample Size</th>
       <th style="padding:9px 12px;text-align:center;font-size:0.65rem;color:#EF4444;text-transform:uppercase">M1 Baseline FPR</th>
       <th style="padding:9px 12px;text-align:center;font-size:0.65rem;color:#10B981;text-transform:uppercase">M2 Contextual FPR</th>

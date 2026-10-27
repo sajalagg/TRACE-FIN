@@ -50,9 +50,9 @@ with col_prof:
 <div style="background:#0E1720;border:1px solid #223342;border-radius:10px;padding:18px 20px;font-size:0.83rem;color:#CBD5E1;line-height:1.75">
   <div><b>Account Holder:</b> {profile.get("display_name","—")} (<code>{uid}</code>)</div>
   <div><b>Username:</b> <code>@{profile.get("username") or uid.lower()}</code></div>
-  <div><b>Simulated Balance:</b> <b style="color:#10B981">{fmt_currency(float(profile.get("simulated_balance",10000.0)))}</b></div>
-  <div><b>Account Category / Archetype:</b> {profile.get("account_category","—").title()} · <code>{profile.get("profile_type","—")}</code></div>
-  <div><b>Expenditure Model:</b> <code>{profile.get("expenditure_model","—")}</code> ({profile.get("industry_sector","—")})</div>
+  <div><b>Balance:</b> <b style="color:#10B981">{fmt_currency(float(profile.get("simulated_balance",10000.0)))}</b></div>
+  <div><b>Account Category / Employment Type:</b> {profile.get("account_category","—").title()} · <code>{profile.get("profile_type","—")}</code></div>
+  <div><b>Expense Type:</b> <code>{profile.get("expenditure_model","—")}</code> ({profile.get("industry_sector","—")})</div>
   <div><b>Declared Monthly Turnover:</b> {fmt_currency(float(profile.get("declared_monthly_turnover",0)))}</div>
   <div><b>Typical / Max Single Transfer:</b> {fmt_currency(float(profile.get("typical_tx_amount",0)))} / {fmt_currency(float(profile.get("typical_max_tx_amount",0)))}</div>
   <hr style="margin:10px 0">

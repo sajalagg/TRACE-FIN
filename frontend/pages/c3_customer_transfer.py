@@ -34,7 +34,7 @@ avail_bal = float(fresh_profile.get("simulated_balance", 10000.0))
 st.markdown("# 💸 Transfer Money")
 st.markdown(
     '<div style="color:#8A9CB0;font-size:0.85rem;margin-top:-10px;margin-bottom:18px">'
-    'Send a simulated payment to one of your saved beneficiaries. Your current sign-in session context '
+    'Send a payment to one of your saved beneficiaries. Your current sign-in session context '
     'is automatically evaluated alongside your account profile before funds are deducted.</div>',
     unsafe_allow_html=True,
 )
@@ -52,7 +52,7 @@ with col_form:
     st.markdown(
         f'<div style="background:#0B1929;border:1px solid #21D4C244;border-radius:8px;padding:12px 16px;margin-bottom:14px;'
         f'display:flex;justify-content:space-between;align-items:center">'
-        f'<span style="font-size:0.82rem;color:#94A3B8">Available Simulated Balance</span>'
+        f'<span style="font-size:0.82rem;color:#94A3B8">Available Balance</span>'
         f'<span style="font-size:1.25rem;font-weight:700;color:#10B981">{fmt_currency(avail_bal)}</span></div>',
         unsafe_allow_html=True,
     )
@@ -70,7 +70,7 @@ with col_form:
 
         default_amt = min(float(fresh_profile.get("typical_tx_amount", 150.0)), max(10.0, avail_bal))
         tx_amount = st.number_input(
-            "Transfer Amount (USD)",
+            "Transfer Amount (INR)",
             min_value=1.0,
             max_value=max(1000000.0, avail_bal * 2.0),
             value=round(default_amt, 2),
@@ -85,11 +85,11 @@ with col_form:
 
         if tx_amount > avail_bal:
             st.error(
-                f"Transfer amount ({fmt_currency(tx_amount)}) exceeds your available simulated balance ({fmt_currency(avail_bal)})."
+                f"Transfer amount ({fmt_currency(tx_amount)}) exceeds your available balance ({fmt_currency(avail_bal)})."
             )
 
         if st.button(
-            "🚀 Submit Simulated Transfer",
+            "Submit Transfer",
             type="primary",
             disabled=(tx_amount > avail_bal),
             use_container_width=True,

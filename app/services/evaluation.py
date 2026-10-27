@@ -325,9 +325,13 @@ PROFILE_DISPLAY_LABELS: Dict[str, str] = {
     "student": "Student",
     "salaried_individual": "Salaried Individual",
     "freelancer": "Freelancer / Consultant",
-    "sme_opex_merchant": "SME OpEx Merchant",
-    "enterprise_capex_firm": "Enterprise CapEx Firm",
-    "high_net_worth": "High-Net-Worth Individual",
+    "sme_opex_merchant": "Small Business",
+    "enterprise_capex_firm": "Enterprise",
+    "high_net_worth": "HNI Individuals",
+    "small business": "Small Business",
+    "enterprise": "Enterprise",
+    "HNI indiviuals": "HNI Individuals",
+    "HNI individuals": "HNI Individuals",
 }
 
 SCENARIO_METADATA: Dict[str, Dict[str, str]] = {
@@ -335,8 +339,8 @@ SCENARIO_METADATA: Dict[str, Dict[str, str]] = {
         "code": "SCEN-01",
         "name": "Enterprise CapEx Equipment Purchase",
         "type": "Legitimate",
-        "headline": "High-value industrial machinery wire ($35k–$115k) to an established B2B supplier during business hours.",
-        "key_lesson": "Transaction-only rules flag the large dollar amount (False Positive), while Contextual Scoring verifies CapEx profile + supply-chain vendor affinity.",
+        "headline": "High-value industrial machinery wire (₹35k–₹115k) to an established B2B supplier during business hours.",
+        "key_lesson": "Transaction-only rules flag the large rupee amount (False Positive), while Contextual Scoring verifies CapEx profile + supply-chain vendor affinity.",
     },
     "legitimate_opex_payroll_cycle": {
         "code": "SCEN-02",
@@ -357,7 +361,7 @@ SCENARIO_METADATA: Dict[str, Dict[str, str]] = {
         "name": "Low-and-Slow Account Takeover (ATO)",
         "type": "Attack",
         "headline": "Sub-threshold transfer preceded by credential-stuffing failures, an unseen device, impossible travel, and a newly added beneficiary.",
-        "key_lesson": "Evades static dollar thresholds, but Contextual Scoring correlates the full kill-chain (Recon -> Initial Access -> Preparation -> Exfiltration).",
+        "key_lesson": "Evades static rupee thresholds, but Contextual Scoring correlates the full kill-chain (Recon -> Initial Access -> Preparation -> Exfiltration).",
     },
     "b2b_vendor_bec_tamper": {
         "code": "SCEN-05",

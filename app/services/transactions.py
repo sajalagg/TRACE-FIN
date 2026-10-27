@@ -571,7 +571,7 @@ def create_live_transaction(
         req_amount = round(float(payload.amount), 2)
         if req_amount > current_balance:
             raise ValueError(
-                f"Insufficient simulated balance: requested ${req_amount:,.2f} exceeds available balance ${current_balance:,.2f}."
+                f"Insufficient simulated balance: requested ₹{req_amount:,.2f} exceeds available balance ₹{current_balance:,.2f}."
             )
 
         home_geo = user_row["home_geo_location"]

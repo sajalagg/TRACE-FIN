@@ -70,7 +70,7 @@ border-radius:8px;padding:16px 20px;margin-bottom:10px">
 
         if req.get("status") == "awaiting_admin_release":
             st.info(
-                f"You confirmed intent for `{tx_id}`. This high-risk transfer is now awaiting final administrator verification in the **Risk Analysis Lab** before your simulated balance is deducted."
+                f"You confirmed intent for `{tx_id}`. This high-risk transfer is now awaiting final administrator verification in the **Risk Analysis Lab** before your balance is deducted."
             )
         else:
             note_val = st.text_input(

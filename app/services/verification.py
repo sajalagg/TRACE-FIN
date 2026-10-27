@@ -400,7 +400,7 @@ def admin_decide_transaction(
                 current_bal = float(user_row["simulated_balance"]) if "simulated_balance" in user_row.keys() else 25000.0
                 if tx_amount > current_bal:
                     raise ValueError(
-                        f"Cannot release transfer: customer simulated balance (${current_bal:,.2f}) is lower than transfer amount (${tx_amount:,.2f})."
+                        f"Cannot release transfer: customer simulated balance (₹{current_bal:,.2f}) is lower than transfer amount (₹{tx_amount:,.2f})."
                     )
                 conn.execute(
                     """

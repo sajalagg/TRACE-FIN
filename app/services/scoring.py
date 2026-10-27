@@ -24,12 +24,12 @@ SCORE_INTERPRETATION_TEXT = (
 RULE_CATALOG: List[RuleDefinitionSchema] = [
     RuleDefinitionSchema(
         rule_id="BASELINE_ABS_AMOUNT_SPIKE",
-        rule_name="Transaction-Only Raw Dollar Threshold",
+        rule_name="Transaction-Only Raw Rupee Threshold",
         applies_to_methods=["baseline"],
         category="baseline",
         max_points=40,
         description=(
-            "Flags transactions that exceed static raw dollar thresholds ($2,500 / $15,000) "
+            "Flags transactions that exceed static raw rupee thresholds (₹2,500 / ₹15,000) "
             "without considering whether the user is an OpEx/CapEx business or high-net-worth profile."
         ),
     ),
@@ -291,17 +291,17 @@ def _evaluate_baseline_rules(
     tx_time_str = tx_row["timestamp_utc"]
     tx_dt = _parse_utc(tx_time_str)
 
-    # 1. Static raw dollar threshold (ignores OpEx/CapEx business profile and net worth)
+    # 1. Static raw rupee threshold (ignores OpEx/CapEx business profile and net worth)
     if amount >= 15000.0:
         triggered.append(
             TriggeredRuleSchema(
                 rule_id="BASELINE_ABS_AMOUNT_SPIKE",
-                rule_name="Transaction-Only Raw Dollar Threshold",
+                rule_name="Transaction-Only Raw Rupee Threshold",
                 category="baseline",
                 points_awarded=40,
                 max_points=40,
                 explanation=(
-                    f"Transaction amount (${amount:,.2f}) exceeds the static high-value threshold ($15,000.00). "
+                    f"Transaction amount (₹{amount:,.2f}) exceeds the static high-value threshold (₹15,000.00). "
                     f"Baseline rules do not account for CapEx/OpEx business profiles."
                 ),
                 evidence_refs=[tx_id],
@@ -311,12 +311,12 @@ def _evaluate_baseline_rules(
         triggered.append(
             TriggeredRuleSchema(
                 rule_id="BASELINE_ABS_AMOUNT_SPIKE",
-                rule_name="Transaction-Only Raw Dollar Threshold",
+                rule_name="Transaction-Only Raw Rupee Threshold",
                 category="baseline",
                 points_awarded=30,
                 max_points=40,
                 explanation=(
-                    f"Transaction amount (${amount:,.2f}) exceeds the static medium threshold ($2,500.00)."
+                    f"Transaction amount (₹{amount:,.2f}) exceeds the static medium threshold (₹2,500.00)."
                 ),
                 evidence_refs=[tx_id],
             )
@@ -344,8 +344,8 @@ def _evaluate_baseline_rules(
                 points_awarded=pts,
                 max_points=30,
                 explanation=(
-                    f"Transaction amount (${amount:,.2f}) is {ratio_to_avg:.1f}x the user's prior "
-                    f"average transaction (${hist_avg:,.2f})."
+                    f"Transaction amount (₹{amount:,.2f}) is {ratio_to_avg:.1f}x the user's prior "
+                    f"average transaction (₹{hist_avg:,.2f})."
                 ),
                 evidence_refs=[tx_id],
             )
@@ -497,7 +497,7 @@ def _evaluate_contextual_rules(
                 max_points=65,
                 explanation=(
                     f"Existing counterparty '{tx_row['beneficiary_name']}' ({ben_id}) had its bank account/routing "
-                    f"modified at {bec_ev['timestamp_utc']} shortly before this ${amount:,.2f} disbursement."
+                    f"modified at {bec_ev['timestamp_utc']} shortly before this ₹{amount:,.2f} disbursement."
                 ),
                 evidence_refs=[bec_ev["event_id"], tx_id],
             )
@@ -600,8 +600,8 @@ def _evaluate_contextual_rules(
                 points_awarded=35,
                 max_points=35,
                 explanation=(
-                    f"Amount (${amount:,.2f}) is {max_ratio:.2f}x the user's declared max transaction (${max_tx:,.2f}) "
-                    f"and {nw_ratio * 100:.1f}% of estimated net worth (${net_worth:,.0f}) for profile '{profile_type}' ({exp_model})."
+                    f"Amount (₹{amount:,.2f}) is {max_ratio:.2f}x the user's declared max transaction (₹{max_tx:,.2f}) "
+                    f"and {nw_ratio * 100:.1f}% of estimated net worth (₹{net_worth:,.0f}) for profile '{profile_type}' ({exp_model})."
                 ),
                 evidence_refs=[user_id, tx_id],
             )
@@ -620,7 +620,7 @@ def _evaluate_contextual_rules(
                 points_awarded=15,
                 max_points=35,
                 explanation=(
-                    f"Amount (${amount:,.2f}) represents {max_ratio * 100:.0f}% of declared single-tx limit (${max_tx:,.2f}) "
+                    f"Amount (₹{amount:,.2f}) represents {max_ratio * 100:.0f}% of declared single-tx limit (₹{max_tx:,.2f}) "
                     f"for '{profile_type}' ({exp_model}) under anomalous session/counterparty context."
                 ),
                 evidence_refs=[user_id, tx_id],
@@ -655,8 +655,8 @@ def _evaluate_contextual_rules(
                 points_awarded=pts,
                 max_points=30,
                 explanation=(
-                    f"{len(tx_24h_rows)} transfers in 24h totaling ${cum_24h_amount:,.2f} "
-                    f"({cum_ratio:.2f}x the user's ${max_tx:,.2f} single-transaction limit) indicate structured splitting."
+                    f"{len(tx_24h_rows)} transfers in 24h totaling ₹{cum_24h_amount:,.2f} "
+                    f"({cum_ratio:.2f}x the user's ₹{max_tx:,.2f} single-transaction limit) indicate structured splitting."
                 ),
                 evidence_refs=[r["transaction_id"] for r in tx_24h_rows],
             )
@@ -670,7 +670,7 @@ def _evaluate_contextual_rules(
                 points_awarded=20,
                 max_points=30,
                 explanation=(
-                    f"Transfer amount (${amount:,.2f}) is sized just below the ${max_tx:,.2f} profile limit "
+                    f"Transfer amount (₹{amount:,.2f}) is sized just below the ₹{max_tx:,.2f} profile limit "
                     f"({max_ratio * 100:.0f}%) to a newly added beneficiary from an unseen device."
                 ),
                 evidence_refs=[tx_id],
@@ -877,7 +877,7 @@ def _build_counterfactual_summary(
         if not positive_rules:
             return (
                 f"Score ({final_score}/100) is well below the user's alert threshold ({threshold}). "
-                f"Amount (${amount:,.2f}) fits the '{profile_type}' ({exp_model}, max ${max_tx:,.0f}) profile "
+                f"Amount (₹{amount:,.2f}) fits the '{profile_type}' ({exp_model}, max ₹{max_tx:,.0f}) profile "
                 f"on a known device and established supply-chain counterparty."
             )
         top_rule = max(positive_rules, key=lambda r: r.points_awarded)
@@ -900,7 +900,7 @@ def _build_counterfactual_summary(
     hypothetical_score = max(0, final_score - removed_pts)
     return (
         f"Score ({final_score}/100) crossed the user's alert threshold ({threshold}) primarily due to "
-        f"{', '.join(pivotal_names)}. Counterfactual: Had this ${amount:,.2f} transfer occurred without "
+        f"{', '.join(pivotal_names)}. Counterfactual: Had this ₹{amount:,.2f} transfer occurred without "
         f"those factors (e.g., on a registered device to an established, unmodified '{exp_model}' counterparty), "
         f"the {method} score would have been {hypothetical_score}/100 (No Alert)."
     )

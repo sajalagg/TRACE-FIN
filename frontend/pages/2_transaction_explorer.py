@@ -66,7 +66,7 @@ risk_filter = st.sidebar.multiselect(
     key="tx_risk_filter",
 )
 exp_filter = st.sidebar.multiselect(
-    "Expenditure Model",
+    "Expense Type",
     options=["capex_heavy", "opex_heavy", "personal_consumption"],
     default=["capex_heavy", "opex_heavy", "personal_consumption"],
     key="tx_exp_filter",
@@ -83,7 +83,7 @@ amounts = [t["amount"] for t in all_txs] if all_txs else [0.0, 200000.0]
 max_amt = float(max(amounts)) if amounts else 200000.0
 
 amount_range = st.sidebar.slider(
-    "Amount Range (USD)",
+    "Amount Range (INR)",
     min_value=0.0,
     max_value=max(max_amt, 1000.0),
     value=(0.0, max(max_amt, 1000.0)),
@@ -100,7 +100,7 @@ sort_col = st.sidebar.selectbox(
         "method3_score": "M3 Score (+Threat Intel)",
         "method2_score": "M2 Score (Contextual)",
         "method1_score": "M1 Score (Baseline)",
-        "amount": "Transaction Amount (USD)",
+        "amount": "Transaction Amount (INR)",
         "timestamp": "Timestamp (UTC)",
     }[x],
     index=0,
@@ -146,7 +146,7 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("Matching Transactions", f"{len(filtered_txs):,}")
 c2.metric("High / Critical (≥60)", sum(1 for t in filtered_txs if t["method3_score"] >= 60))
 c3.metric("Attack (Ground Truth)", sum(1 for t in filtered_txs if t["ground_truth"] == 1))
-c4.metric("Total Volume (USD)", f'${sum(t["amount"] for t in filtered_txs):,.0f}')
+c4.metric("Total Volume (INR)", f'₹{sum(t["amount"] for t in filtered_txs):,.0f}')
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -258,7 +258,7 @@ if tx_ids:
             fields = {
                 "Transaction ID": tx["id"],
                 "Timestamp (UTC)": fmt_ts(tx["timestamp"]),
-                "Amount": fmt_currency(tx["amount"], tx.get("currency", "USD")),
+                "Amount": fmt_currency(tx["amount"], tx.get("currency", "INR")),
                 "Scenario Archetype": tx.get("scenario_label", "—"),
                 "Origin Device ID": tx.get("device_id", "—"),
                 "Origin IP Address": tx.get("ip_address", "—"),

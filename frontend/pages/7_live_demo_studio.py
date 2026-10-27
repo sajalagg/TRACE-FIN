@@ -79,16 +79,16 @@ with st.expander("➕ Optional Step 0: Onboard a Brand-New Customer Profile or C
         with uc1:
             u_name = st.text_input("Account Holder / Company Name", value="Zenith Global Manufacturing Ltd", key="u_name")
             u_cat = st.selectbox("Account Category", options=["business", "individual"], key="u_cat")
-            p_types = ["enterprise_capex_firm", "sme_opex_merchant", "student", "salaried_individual", "freelancer", "high_net_worth"]
-            u_ptype = st.selectbox("Profile Archetype", options=p_types, key="u_ptype")
-            u_exp = st.selectbox("Expenditure Model", options=["capex_heavy", "opex_heavy", "personal_consumption"], key="u_exp")
+            p_types = ["enterprise", "small business", "student", "salaried_individual", "freelancer", "HNI indiviuals", "enterprise_capex_firm", "sme_opex_merchant", "high_net_worth"]
+            u_ptype = st.selectbox("Employment Type", options=p_types, key="u_ptype")
+            u_exp = st.selectbox("Expense Type", options=["capex_heavy", "opex_heavy", "personal_consumption"], key="u_exp")
         with uc2:
             u_sector = st.text_input("Industry Sector", value="manufacturing_heavy_machinery", key="u_sector")
-            u_nw = st.number_input("Estimated Net Worth (USD)", min_value=500.0, value=4500000.0, step=10000.0, key="u_nw")
-            u_turnover = st.number_input("Declared Monthly Turnover (USD)", min_value=200.0, value=320000.0, step=5000.0, key="u_turn")
-            u_typ_tx = st.number_input("Typical Single Tx Amount (USD)", min_value=5.0, value=22000.0, step=500.0, key="u_typ")
+            u_nw = st.number_input("Estimated Net Worth (INR)", min_value=500.0, value=4500000.0, step=10000.0, key="u_nw")
+            u_turnover = st.number_input("Declared Monthly Turnover (INR)", min_value=200.0, value=320000.0, step=5000.0, key="u_turn")
+            u_typ_tx = st.number_input("Typical Single Tx Amount (INR)", min_value=5.0, value=22000.0, step=500.0, key="u_typ")
         with uc3:
-            u_max_tx = st.number_input("Historical Max Single Tx Ceiling (USD)", min_value=20.0, value=95000.0, step=1000.0, key="u_max")
+            u_max_tx = st.number_input("Historical Max Single Tx Ceiling (INR)", min_value=20.0, value=95000.0, step=1000.0, key="u_max")
             u_hours = st.text_input("Operating Hours Window (UTC)", value="04:00-16:00", key="u_hours")
             u_geo = st.text_input("Home Geo-Location", value="IN-Mumbai", key="u_geo")
             u_thresh = st.slider("Personal Alert Threshold", min_value=20, max_value=90, value=60, step=5, key="u_thresh")
@@ -101,7 +101,7 @@ with st.expander("➕ Optional Step 0: Onboard a Brand-New Customer Profile or C
                     "profile_type": u_ptype,
                     "industry_sector": u_sector,
                     "expenditure_model": u_exp,
-                    "net_worth_band": ">$1M" if u_nw >= 1_000_000 else "$100K-$1M" if u_nw >= 100_000 else "<$100K",
+                    "net_worth_band": ">₹1M" if u_nw >= 1_000_000 else "₹100K-₹1M" if u_nw >= 100_000 else "<₹100K",
                     "estimated_net_worth": u_nw,
                     "declared_monthly_turnover": u_turnover,
                     "typical_tx_amount": u_typ_tx,
@@ -211,8 +211,8 @@ with col_f1:
 <div style="background:#0B1520;border:1px solid #1E2E3E;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:0.74rem;color:#CBD5E1">
   <b>Calibrated Profile Baseline:</b><br>
   • Model: <code style="color:#21D4C2">{u_obj['expenditure_model']}</code> ({u_obj['industry_sector']})<br>
-  • Typical Tx: <b>${u_obj['typical_tx_amount']:,.0f}</b> &nbsp;|&nbsp; Max Ceiling: <b>${u_obj['typical_max_tx_amount']:,.0f}</b><br>
-  • Monthly Turnover: <b>${u_obj['declared_monthly_turnover']:,.0f}</b> &nbsp;|&nbsp; Net Worth: <b>${u_obj['estimated_net_worth']:,.0f}</b><br>
+  • Typical Tx: <b>₹{u_obj['typical_tx_amount']:,.0f}</b> &nbsp;|&nbsp; Max Ceiling: <b>₹{u_obj['typical_max_tx_amount']:,.0f}</b><br>
+  • Monthly Turnover: <b>₹{u_obj['declared_monthly_turnover']:,.0f}</b> &nbsp;|&nbsp; Net Worth: <b>₹{u_obj['estimated_net_worth']:,.0f}</b><br>
   • Operating Hours: <b>{u_obj['operating_hours_utc']} UTC</b> &nbsp;|&nbsp; Home: <b>{u_obj['home_geo_location']}</b>
 </div>
 """,
@@ -220,7 +220,7 @@ with col_f1:
     )
 
     tx_amount = st.number_input(
-        "Transaction Amount (USD) — Type Any Custom Value",
+        "Transaction Amount (INR) — Type Any Custom Value",
         min_value=1.0,
         max_value=10_000_000.0,
         value=float(u_obj["typical_tx_amount"] * 2.0),
@@ -359,7 +359,7 @@ if st.button(
     payload = {
         "user_id": sel_uid,
         "amount": float(tx_amount),
-        "currency": "USD",
+        "currency": "INR",
         "beneficiary_id": ben_id_val.strip(),
         "beneficiary_name": ben_name_val.strip(),
         "beneficiary_category": ben_cat_val,

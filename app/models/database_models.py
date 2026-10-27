@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     transaction_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     amount REAL NOT NULL CHECK (amount > 0),
-    currency TEXT NOT NULL DEFAULT 'USD',
+    currency TEXT NOT NULL DEFAULT 'INR',
     timestamp_utc TEXT NOT NULL,
     beneficiary_id TEXT NOT NULL,
     beneficiary_name TEXT NOT NULL,
