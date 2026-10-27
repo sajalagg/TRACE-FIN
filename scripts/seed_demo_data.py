@@ -27,7 +27,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "student",
         "industry_sector": "education",
         "expenditure_model": "personal_consumption",
-        "net_worth_band": "<$10K",
+        "net_worth_band": "<₹10K",
         "estimated_net_worth": 4500.0,
         "declared_monthly_turnover": 900.0,
         "typical_tx_amount": 35.0,
@@ -48,7 +48,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "student",
         "industry_sector": "education",
         "expenditure_model": "personal_consumption",
-        "net_worth_band": "<$10K",
+        "net_worth_band": "<₹10K",
         "estimated_net_worth": 6200.0,
         "declared_monthly_turnover": 1100.0,
         "typical_tx_amount": 45.0,
@@ -69,7 +69,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "salaried_individual",
         "industry_sector": "personal_finance",
         "expenditure_model": "personal_consumption",
-        "net_worth_band": "$25K-$100K",
+        "net_worth_band": "₹25K-₹100K",
         "estimated_net_worth": 55000.0,
         "declared_monthly_turnover": 4200.0,
         "typical_tx_amount": 140.0,
@@ -90,7 +90,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "salaried_individual",
         "industry_sector": "personal_finance",
         "expenditure_model": "personal_consumption",
-        "net_worth_band": "$25K-$100K",
+        "net_worth_band": "₹25K-₹100K",
         "estimated_net_worth": 78000.0,
         "declared_monthly_turnover": 5500.0,
         "typical_tx_amount": 180.0,
@@ -111,7 +111,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "freelancer",
         "industry_sector": "independent_consulting",
         "expenditure_model": "personal_consumption",
-        "net_worth_band": "$100K-$250K",
+        "net_worth_band": "₹100K-₹250K",
         "estimated_net_worth": 145000.0,
         "declared_monthly_turnover": 9500.0,
         "typical_tx_amount": 420.0,
@@ -132,7 +132,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "high_net_worth",
         "industry_sector": "private_wealth",
         "expenditure_model": "personal_consumption",
-        "net_worth_band": ">$1M",
+        "net_worth_band": ">₹1M",
         "estimated_net_worth": 2400000.0,
         "declared_monthly_turnover": 65000.0,
         "typical_tx_amount": 3200.0,
@@ -153,7 +153,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "sme_opex_merchant",
         "industry_sector": "retail_ecommerce",
         "expenditure_model": "opex_heavy",
-        "net_worth_band": "$250K-$1M",
+        "net_worth_band": "₹250K-₹1M",
         "estimated_net_worth": 380000.0,
         "declared_monthly_turnover": 52000.0,
         "typical_tx_amount": 850.0,
@@ -174,7 +174,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "sme_opex_merchant",
         "industry_sector": "saas_it_services",
         "expenditure_model": "opex_heavy",
-        "net_worth_band": "$250K-$1M",
+        "net_worth_band": "₹250K-₹1M",
         "estimated_net_worth": 620000.0,
         "declared_monthly_turnover": 75000.0,
         "typical_tx_amount": 1400.0,
@@ -195,7 +195,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "sme_opex_merchant",
         "industry_sector": "hospitality",
         "expenditure_model": "opex_heavy",
-        "net_worth_band": "$100K-$250K",
+        "net_worth_band": "₹100K-₹250K",
         "estimated_net_worth": 210000.0,
         "declared_monthly_turnover": 38000.0,
         "typical_tx_amount": 600.0,
@@ -216,7 +216,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "enterprise_capex_firm",
         "industry_sector": "manufacturing_heavy_machinery",
         "expenditure_model": "capex_heavy",
-        "net_worth_band": ">$5M",
+        "net_worth_band": ">₹5M",
         "estimated_net_worth": 6800000.0,
         "declared_monthly_turnover": 420000.0,
         "typical_tx_amount": 24000.0,
@@ -237,7 +237,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "enterprise_capex_firm",
         "industry_sector": "construction_infra",
         "expenditure_model": "capex_heavy",
-        "net_worth_band": ">$5M",
+        "net_worth_band": ">₹5M",
         "estimated_net_worth": 5200000.0,
         "declared_monthly_turnover": 360000.0,
         "typical_tx_amount": 19500.0,
@@ -258,7 +258,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "profile_type": "enterprise_capex_firm",
         "industry_sector": "energy_utilities",
         "expenditure_model": "capex_heavy",
-        "net_worth_band": ">$5M",
+        "net_worth_band": ">₹5M",
         "estimated_net_worth": 8500000.0,
         "declared_monthly_turnover": 550000.0,
         "typical_tx_amount": 32000.0,
@@ -610,7 +610,7 @@ def seed_database(
                 expected_monthly_tx_count, operating_hours_utc,
                 home_geo_location, home_ip_prefix, created_at_utc
             ) VALUES (?, ?, ?, 'admin', 0.0, ?, 'individual', 'salaried_individual',
-                      'security_operations', 'personal_consumption', '$25K-$100K',
+                      'security_operations', 'personal_consumption', '₹25K-₹100K',
                       50000.0, 4000.0, 100.0, 1000.0, 10, '00:00-23:59', 'IN-Mumbai', '103.21.244.', ?)
             """,
             (
@@ -685,7 +685,7 @@ def seed_database(
                     beneficiary_id, beneficiary_name, beneficiary_category,
                     beneficiary_industry, device_id, ip_address, geo_location,
                     is_suspicious, scenario_label
-                ) VALUES (?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, 'INR', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     tx_id,
@@ -833,7 +833,7 @@ def seed_database(
             insert_tx(u, amount, ts, ben_id, ben_name, ben_cat, ben_ind, dev_id, ip_addr, u["home_geo_location"], 0, "normal_routine")
 
         # Archetype 2: Legitimate High-Value CapEx Equipment/Material Purchase (is_suspicious = 0)
-        # Raw amount is huge ($45k - $125k), which trips naive amount rules, but fits CapEx profile,
+        # Raw amount is huge (₹45k - ₹125k), which trips naive amount rules, but fits CapEx profile,
         # net worth, operating hours, known device, and matching supply-chain vendor.
         for i in range(n_capex_legit):
             u = capex_users[i % len(capex_users)]
@@ -1219,7 +1219,7 @@ def print_inspection_report(db_path: Optional[Path] = None) -> None:
         for u in users:
             print(
                 f"   - {u['user_id']} | {u['profile_type']:<21} | {u['expenditure_model']:<20} | "
-                f"NW: {u['net_worth_band']:<10} | MaxTx: ${u['typical_max_tx_amount']:,.0f}"
+                f"NW: {u['net_worth_band']:<10} | MaxTx: ₹{u['typical_max_tx_amount']:,.0f}"
             )
 
         print("\n3. Transaction Scenarios & Ground-Truth Breakdown:")
@@ -1254,7 +1254,7 @@ def print_inspection_report(db_path: Optional[Path] = None) -> None:
         if sample_tx:
             print(
                 f"   Transaction {sample_tx['transaction_id']} | User={sample_tx['user_id']} | "
-                f"Amount=${sample_tx['amount']:,.2f} | Time={sample_tx['timestamp_utc']} | "
+                f"Amount=₹{sample_tx['amount']:,.2f} | Time={sample_tx['timestamp_utc']} | "
                 f"Dev={sample_tx['device_id']} | Ben={sample_tx['beneficiary_id']} | Geo={sample_tx['geo_location']}"
             )
             auths = conn.execute(

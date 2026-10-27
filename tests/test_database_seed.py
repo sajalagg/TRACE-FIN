@@ -40,7 +40,7 @@ def test_schema_and_foreign_key_enforcement(tmp_path: Path) -> None:
                     beneficiary_industry, device_id, ip_address, geo_location,
                     is_suspicious, scenario_label
                 ) VALUES (
-                    'TX-BAD', 'USR-DOES-NOT-EXIST', 100.0, 'USD', '2026-03-10T10:00:00Z',
+                    'TX-BAD', 'USR-DOES-NOT-EXIST', 100.0, 'INR', '2026-03-10T10:00:00Z',
                     'BEN-1', 'Test Ben', 'personal_peer', 'general_consumer',
                     'DEV-1', '10.0.0.1', 'IN-Mumbai', 0, 'normal_routine'
                 )

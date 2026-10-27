@@ -311,10 +311,10 @@ def build_transaction_timeline(
         p_amt = float(p["amount"])
         phase = "EXFILTRATION_EXECUTION" if is_structuring_window else "NORMAL_ACTIVITY"
         interp = (
-            f"Preceding transfer (${p_amt:,.2f} to {p['beneficiary_id']}) within 24h window contributing to "
-            f"${total_24h_amount:,.2f} cumulative outflow."
+            f"Preceding transfer (₹{p_amt:,.2f} to {p['beneficiary_id']}) within 24h window contributing to "
+            f"₹{total_24h_amount:,.2f} cumulative outflow."
             if is_structuring_window
-            else f"Prior routine transaction (${p_amt:,.2f}) within 24h window."
+            else f"Prior routine transaction (₹{p_amt:,.2f}) within 24h window."
         )
         entry = TimelineEntrySchema(
             sequence_no=0,
@@ -327,7 +327,7 @@ def build_transaction_timeline(
             ip_address=p["ip_address"],
             device_id=p["device_id"],
             recorded_fact=(
-                f"Prior Transaction {p_id}: amount=${p_amt:,.2f} {p['currency']} to "
+                f"Prior Transaction {p_id}: amount=₹{p_amt:,.2f} {p['currency']} to "
                 f"{p['beneficiary_id']} ('{p['beneficiary_name']}') from device '{p['device_id']}'."
             ),
             kill_chain_phase=phase,
@@ -344,13 +344,13 @@ def build_transaction_timeline(
     if has_attack_precursors or is_structuring_window or tx_amt > max_tx:
         tx_phase = "EXFILTRATION_EXECUTION"
         tx_interp = (
-            f"Target transaction (${tx_amt:,.2f} to '{tx_row['beneficiary_name']}') executed following "
+            f"Target transaction (₹{tx_amt:,.2f} to '{tx_row['beneficiary_name']}') executed following "
             f"anomalous precursor events or profile-limit breach."
         )
     else:
         tx_phase = "NORMAL_ACTIVITY"
         tx_interp = (
-            f"Target transaction (${tx_amt:,.2f} to '{tx_row['beneficiary_name']}') aligns with "
+            f"Target transaction (₹{tx_amt:,.2f} to '{tx_row['beneficiary_name']}') aligns with "
             f"'{tx_row['expenditure_model']}' profile and baseline session history."
         )
 
@@ -365,7 +365,7 @@ def build_transaction_timeline(
         ip_address=tx_ip,
         device_id=tx_dev_id,
         recorded_fact=(
-            f"Target Transaction {transaction_id}: amount=${tx_amt:,.2f} {tx_row['currency']} to "
+            f"Target Transaction {transaction_id}: amount=₹{tx_amt:,.2f} {tx_row['currency']} to "
             f"beneficiary '{tx_ben_id}' ('{tx_row['beneficiary_name']}', category='{tx_row['beneficiary_category']}', "
             f"industry='{tx_row['beneficiary_industry']}') from device '{tx_dev_id}', IP '{tx_ip}' ({tx_geo})."
         ),

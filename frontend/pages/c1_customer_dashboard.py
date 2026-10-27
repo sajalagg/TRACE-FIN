@@ -56,10 +56,10 @@ unique_bens = {b["beneficiary_id"]: b for b in bens}
 render_kpi_row(
     [
         {
-            "label": "Available Simulated Balance",
+            "label": "Available Balance",
             "value": fmt_currency(float(fresh_profile.get("simulated_balance", 10000.0))),
             "color": "#10B981",
-            "delta": "Synthetic Demo Funds",
+            "delta": "Active Account Balance",
             "delta_positive": True,
         },
         {
@@ -93,7 +93,7 @@ col_left, col_right = st.columns([1.45, 1.0])
 with col_left:
     st.markdown('<div class="panel-header">Recent Account Transfers</div>', unsafe_allow_html=True)
     if not user_txs:
-        st.info("No transactions recorded for your account yet. Use **Transfer Money** to send a simulated payment.")
+        st.info("No transactions recorded for your account yet. Use **Transfer Money** to send a payment.")
     else:
         for tx in user_txs[:6]:
             score = int(tx.get("method3_score") or tx.get("method2_score") or 0)

@@ -169,7 +169,7 @@ def create_or_get_incident_for_denial(
     note_suffix = f" User note: {denial_notes}" if denial_notes else ""
     summary_reason = (
         f"User '{user_row['display_name']}' ({user_id}) denied transaction {transaction_id} "
-        f"(${float(tx_row['amount']):,.2f} to '{tx_row['beneficiary_name']}') via verification request "
+        f"(₹{float(tx_row['amount']):,.2f} to '{tx_row['beneficiary_name']}') via verification request "
         f"{verification_request_id}. Contextual+TI risk score at escalation: {score_val}/100.{note_suffix}"
     )
 

@@ -10,6 +10,7 @@ from app.api.routes_incidents import router as incidents_router
 from app.api.routes_preferences import router as preferences_router
 from app.api.routes_transactions import router as transactions_router
 from app.api.routes_verification import router as verification_router
+from app.core.database import init_db
 
 app = FastAPI(
     title="TRACE-Fin API",
@@ -36,3 +37,9 @@ app.include_router(preferences_router)
 app.include_router(verification_router)
 app.include_router(incidents_router)
 app.include_router(evaluation_router)
+
+
+@app.on_event("startup")
+def _apply_database_migrations() -> None:
+    """Bring existing databases up to the current schema (idempotent) before serving requests."""
+    init_db()

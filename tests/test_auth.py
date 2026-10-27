@@ -210,3 +210,40 @@ def test_ownership_enforcement_prevents_idor_and_admin_access(
     logout_resp = client.post("/auth/logout", headers=u1_headers)
     assert logout_resp.status_code == 200
     assert client.get("/auth/me", headers=u1_headers).status_code == 401
+
+
+def test_register_with_new_employment_types(seeded_auth_env: tuple[TestClient, Path]) -> None:
+    """Verify registration functions properly with 'HNI indiviuals', 'small business', and 'enterprise'."""
+    client, _ = seeded_auth_env
+    new_types = [
+        ("hni.user", "HNI indiviuals", "personal_consumption", "individual"),
+        ("biz.user", "small business", "opex_heavy", "business"),
+        ("corp.user", "enterprise", "capex_heavy", "business"),
+    ]
+    for username, emp_type, exp_model, cat in new_types:
+        resp = client.post(
+            "/auth/register",
+            json={
+                "username": username,
+                "password": "Password123#",
+                "display_name": f"User {username}",
+                "account_category": cat,
+                "profile_type": emp_type,
+                "industry_sector": "retail_ecommerce" if cat == "business" else "personal_finance",
+                "expenditure_model": exp_model,
+                "home_geo_location": "IN-Mumbai",
+                "home_ip_address": "103.21.244.50",
+                "primary_device_label": "Workstation",
+                "simulated_balance": 50000.0,
+                "timezone_iana": "Asia/Kolkata",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["session_token"]
+        assert data["user"]["username"] == username
+        # Verify profile can be fetched
+        token = data["session_token"]
+        me_resp = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert me_resp.status_code == 200
+        assert me_resp.json()["user"]["username"] == username

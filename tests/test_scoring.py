@@ -76,7 +76,7 @@ def test_legitimate_capex_high_value_reduces_false_positives(
     assert comp_res.status_code == 200
     comp = comp_res.json()
 
-    # Baseline flags the huge raw dollar amount (>= 60), whereas Contextual sees CapEx profile + vendor match (0)
+    # Baseline flags the huge raw rupee amount (>= 60), whereas Contextual sees CapEx profile + vendor match (0)
     assert comp["baseline"]["risk_score"] >= 60
     assert comp["contextual"]["risk_score"] == 0
     assert comp["delta_contextual_vs_baseline"] < 0

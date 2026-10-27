@@ -27,7 +27,7 @@ uid = auth_user.get("user_id", "USR-001")
 st.markdown("# 📜 My Transactions")
 st.markdown(
     '<div style="color:#8A9CB0;font-size:0.85rem;margin-top:-10px;margin-bottom:18px">'
-    'Complete history of your simulated transfers, status updates, and security explanations.</div>',
+    'Complete history of your transfers, status updates, and security explanations.</div>',
     unsafe_allow_html=True,
 )
 

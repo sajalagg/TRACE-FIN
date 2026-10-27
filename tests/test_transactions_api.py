@@ -120,7 +120,7 @@ def test_create_custom_user_beneficiary_and_live_transaction(
             "profile_type": "enterprise_capex_firm",
             "industry_sector": "manufacturing_heavy_machinery",
             "expenditure_model": "capex_heavy",
-            "net_worth_band": ">$5M",
+            "net_worth_band": ">₹5M",
             "estimated_net_worth": 5000000.0,
             "declared_monthly_turnover": 300000.0,
             "typical_tx_amount": 20000.0,
@@ -163,7 +163,7 @@ def test_create_custom_user_beneficiary_and_live_transaction(
         json={
             "user_id": new_uid,
             "amount": 65000.0,
-            "currency": "USD",
+            "currency": "INR",
             "beneficiary_id": "BEN-DEMO-SUPPLIER-01",
             "beneficiary_name": "Demo Robotics & CNC GmbH",
             "beneficiary_category": "verified_b2b_vendor",

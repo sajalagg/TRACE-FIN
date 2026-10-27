@@ -209,7 +209,7 @@ intel_col, release_col = st.columns([1.35, 1.15], gap="large")
 
 with intel_col:
     st.markdown(
-        '<div class="panel-header">SESSION &amp; NETWORK INTELLIGENCE (OBSERVED · SIMULATED · INFERRED)</div>',
+        '<div class="panel-header">SESSION &amp; NETWORK INTELLIGENCE (OBSERVED · CONTEXT · INFERRED)</div>',
         unsafe_allow_html=True,
     )
     if sess_detail:
@@ -232,7 +232,7 @@ with intel_col:
       <div>Active Session: <b>{"Yes" if obs.get("is_active", True) else "Revoked"}</b></div>
     </div>
     <div style="background:#13202B;border:1px solid #223342;border-radius:6px;padding:8px 10px">
-      <div style="color:#FDE68A;font-weight:700;font-size:0.65rem;text-transform:uppercase;margin-bottom:4px">2. Simulated Input</div>
+      <div style="color:#FDE68A;font-weight:700;font-size:0.65rem;text-transform:uppercase;margin-bottom:4px">2. Network Context</div>
       <div>IP: <code>{sim.get("ip_address", sess_detail.get("ip_address","—"))}</code></div>
       <div>Network: <code>{sim.get("network_type", sess_detail.get("network_type","—"))}</code></div>
       <div>Device: <code>{sim.get("device_id", sess_detail.get("device_id","—"))}</code></div>
@@ -298,7 +298,7 @@ with release_col:
             res = submit_admin_transaction_decision_live(selected_tx_id, "approve", admin_note_input)
             if res["ok"]:
                 st.success(
-                    f"Transfer `{selected_tx_id}` released and marked COMPLETED. Simulated balance updated."
+                    f"Transfer `{selected_tx_id}` released and marked COMPLETED. Balance updated."
                 )
                 st.rerun()
             else:
@@ -314,7 +314,7 @@ with release_col:
             if res["ok"]:
                 inc_id = (res.get("data") or {}).get("linked_incident_id")
                 st.warning(
-                    f"Transfer `{selected_tx_id}` BLOCKED (simulated balance untouched). "
+                    f"Transfer `{selected_tx_id}` BLOCKED (balance untouched). "
                     f"Forensic Incident `{inc_id}` created."
                 )
                 st.rerun()

@@ -334,12 +334,30 @@ def inject_css() -> None:
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
-def fmt_currency(amount: float, currency: str = "USD") -> str:
-    if amount >= 1_000_000:
-        return f"${amount / 1_000_000:.2f}M"
-    if amount >= 1_000:
-        return f"${amount:,.2f}" if amount % 1 != 0 else f"${amount:,.0f}"
-    return f"${amount:,.2f}"
+def _indian_group(n: int) -> str:
+    """Group an integer using the Indian numbering system (e.g., 12,34,567)."""
+    s = str(abs(n))
+    if len(s) > 3:
+        head, tail = s[:-3], s[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            parts.insert(0, head)
+        s = ",".join(parts + [tail])
+    return ("-" if n < 0 else "") + s
+
+
+def fmt_currency(amount: float, currency: str = "INR") -> str:
+    amount = float(amount)
+    if abs(amount) >= 10_000_000:
+        return f"₹{amount / 10_000_000:.2f} Cr"
+    whole = int(round(amount)) if amount % 1 == 0 else int(amount)
+    if amount % 1 == 0 and abs(amount) >= 1_000:
+        return f"₹{_indian_group(whole)}"
+    paise = f"{abs(amount) % 1:.2f}"[1:]
+    return f"₹{_indian_group(whole)}{paise}"
 
 
 def fmt_score(score: int) -> str:
@@ -446,7 +464,7 @@ def render_demo_banner() -> None:
     st.markdown(
         '<div class="demo-banner">'
         '<div><span class="demo-dot"></span>'
-        '<b>SIMULATED BANKING ENVIRONMENT</b> · All accounts, balances, and transfers are synthetic (no real money moves) · '
+        '<b>DIGITAL BANKING &amp; FORENSIC RISK PROTECTION</b> · '
         'Risk scores (0–100) are explainable rule-based indicators, not probabilities</div>'
         '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:#21D4C2">TRACE-Fin Protection Active</span>'
         '</div>',
@@ -473,7 +491,7 @@ def render_two_line_customer_explainer(
         bg_col = "#2A1215"
         line1 = (
             f"⏸️ <b>Transfer Placed on High-Risk Security Hold (Score: {risk_score}/100)</b> — "
-            "Your simulated account balance has <b>not</b> been deducted."
+            "Your account balance has <b>not</b> been deducted."
         )
         line2 = (
             f"🔍 <b>Why &amp; Next Step:</b> {reason_snippet} "
@@ -484,10 +502,10 @@ def render_two_line_customer_explainer(
         bg_col = "#3B0A0A"
         line1 = (
             f"🛑 <b>Transfer Blocked &amp; Protected (Score: {risk_score}/100)</b> — "
-            "Your simulated account balance was <b>not</b> deducted."
+            "Your account balance was <b>not</b> deducted."
         )
         line2 = (
-            f"🔒 <b>Why &amp; Next Step:</b> {reason_snippet} "
+            f"<b>Why &amp; Next Step:</b> {reason_snippet} "
             "This transfer was denied and logged as a protected security incident."
         )
     else:
@@ -495,7 +513,7 @@ def render_two_line_customer_explainer(
         bg_col = "#281D0A"
         line1 = (
             f"⚠️ <b>Additional Verification Needed (Score: {risk_score}/100)</b> — "
-            "Your simulated balance has <b>not</b> been deducted while this transfer awaits confirmation."
+            "Your balance has <b>not</b> been deducted while this transfer awaits confirmation."
         )
         line2 = (
             f"🛡️ <b>Why &amp; Next Step:</b> {reason_snippet} "

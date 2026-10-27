@@ -58,7 +58,7 @@ class UserCreateSchema(BaseModel):
     simulated_balance: float = Field(
         default=25000.0,
         ge=0,
-        description="Initial simulated balance in USD.",
+        description="Initial simulated balance in INR.",
     )
     display_name: str = Field(
         default="Live Demo Corp (OpEx Retail SME)",
@@ -82,7 +82,7 @@ class UserCreateSchema(BaseModel):
         pattern=r"^(opex_heavy|capex_heavy|personal_consumption)$",
         description="'opex_heavy', 'capex_heavy', or 'personal_consumption'",
     )
-    net_worth_band: str = Field(default="$250K-$1M")
+    net_worth_band: str = Field(default="₹250K-₹1M")
     estimated_net_worth: float = Field(default=450000.0, gt=0)
     declared_monthly_turnover: float = Field(default=60000.0, gt=0)
     typical_tx_amount: float = Field(default=950.0, gt=0)
@@ -691,9 +691,9 @@ class TransactionCreateSchema(BaseModel):
     amount: float = Field(
         default=185.0,
         gt=0,
-        description="Transaction amount in USD.",
+        description="Transaction amount in INR.",
     )
-    currency: str = Field(default="USD")
+    currency: str = Field(default="INR")
     beneficiary_id: str = Field(
         default="BEN-DEMO-01",
         description="Target beneficiary ID (can be an existing beneficiary or a new one).",
@@ -799,7 +799,7 @@ class AuthRegisterSchema(BaseModel):
         default="personal_consumption",
         pattern=r"^(opex_heavy|capex_heavy|personal_consumption)$",
     )
-    net_worth_band: str = Field(default="$25K-$100K")
+    net_worth_band: str = Field(default="₹25K-₹100K")
     estimated_net_worth: float = Field(default=60000.0, gt=0)
     declared_monthly_turnover: float = Field(default=4500.0, gt=0)
     typical_tx_amount: float = Field(default=150.0, gt=0)
@@ -824,7 +824,7 @@ class AuthRegisterSchema(BaseModel):
     simulated_balance: float = Field(
         default=25000.0,
         ge=100.0,
-        description="Initial synthetic balance in USD (simulation only).",
+        description="Initial synthetic balance in INR (simulation only).",
     )
     risk_threshold: int = Field(default=60, ge=10, le=95)
     timezone_iana: str = Field(default="Asia/Kolkata")
