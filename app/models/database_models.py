@@ -3,9 +3,13 @@ from __future__ import annotations
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
 
--- 1. Synthetic Users & Financial/Business Profiles
+-- 1. Synthetic Users & Financial/Business Profiles (with Demo Auth, Role & Simulated Balance)
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
+    username TEXT UNIQUE,
+    password_hash TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'customer' CHECK (role IN ('customer', 'admin')),
+    simulated_balance REAL NOT NULL DEFAULT 10000.0 CHECK (simulated_balance >= 0),
     display_name TEXT NOT NULL,
     account_category TEXT NOT NULL CHECK (account_category IN ('individual', 'business')),
     profile_type TEXT NOT NULL,
@@ -19,7 +23,55 @@ CREATE TABLE IF NOT EXISTS users (
     expected_monthly_tx_count INTEGER NOT NULL CHECK (expected_monthly_tx_count > 0),
     operating_hours_utc TEXT NOT NULL,
     home_geo_location TEXT NOT NULL,
+    home_ip_prefix TEXT NOT NULL DEFAULT '103.21.244.',
     created_at_utc TEXT NOT NULL
+);
+
+-- 1B. Login Sessions & Network Intelligence (Server-Side Session Store + Forensic Context)
+CREATE TABLE IF NOT EXISTS user_sessions (
+    session_id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('customer', 'admin')),
+    ip_address TEXT NOT NULL DEFAULT '127.0.0.1',
+    geo_location TEXT NOT NULL DEFAULT 'IN-Mumbai',
+    device_id TEXT NOT NULL DEFAULT 'DEV-WEB-SESSION',
+    device_label TEXT NOT NULL DEFAULT 'Primary Web Session',
+    network_type TEXT NOT NULL DEFAULT 'home_broadband' CHECK (
+        network_type IN (
+            'home_broadband',
+            'corporate_network',
+            'public_wifi',
+            'commercial_vpn',
+            'mobile_roaming',
+            'anonymizer_proxy'
+        )
+    ),
+    is_known_ip INTEGER NOT NULL DEFAULT 1 CHECK (is_known_ip IN (0, 1)),
+    is_known_device INTEGER NOT NULL DEFAULT 1 CHECK (is_known_device IN (0, 1)),
+    is_home_location INTEGER NOT NULL DEFAULT 1 CHECK (is_home_location IN (0, 1)),
+    failed_logins_1h INTEGER NOT NULL DEFAULT 0,
+    created_at_utc TEXT NOT NULL,
+    expires_at_utc TEXT NOT NULL,
+    is_revoked INTEGER NOT NULL DEFAULT 0 CHECK (is_revoked IN (0, 1)),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- 1C. Customer Beneficiaries (Paired with `beneficiary_events` for Forensic Correlation)
+CREATE TABLE IF NOT EXISTS beneficiaries (
+    beneficiary_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    account_reference TEXT NOT NULL,
+    beneficiary_category TEXT NOT NULL DEFAULT 'personal_peer',
+    beneficiary_industry TEXT NOT NULL DEFAULT 'general_consumer',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    is_verified INTEGER NOT NULL DEFAULT 0 CHECK (is_verified IN (0, 1)),
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL,
+    notes TEXT,
+    PRIMARY KEY (user_id, beneficiary_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 -- 2. Synthetic Transactions (Ground-truth labels stored strictly for Stage 10 evaluation)
@@ -38,6 +90,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     geo_location TEXT NOT NULL,
     is_suspicious INTEGER NOT NULL CHECK (is_suspicious IN (0, 1)),
     scenario_label TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'COMPLETED' CHECK (
+        status IN ('COMPLETED', 'PENDING_VERIFICATION', 'HELD_HIGH_RISK', 'BLOCKED')
+    ),
+    decision_reason TEXT NOT NULL DEFAULT 'Approved under baseline simulation policy.',
+    notes TEXT,
+    idempotency_key TEXT UNIQUE,
+    balance_deducted INTEGER NOT NULL DEFAULT 1 CHECK (balance_deducted IN (0, 1)),
+    session_id TEXT,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
@@ -107,16 +167,23 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
--- 8. Simulated Verification Requests & User Responses
+-- 8. Simulated Verification Requests & User / Admin Responses
 CREATE TABLE IF NOT EXISTS verification_requests (
     request_id TEXT PRIMARY KEY,
     transaction_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('pending', 'confirmed_legitimate', 'denied_suspicious')),
+    status TEXT NOT NULL CHECK (
+        status IN ('pending', 'awaiting_admin_release', 'confirmed_legitimate', 'denied_suspicious')
+    ),
     created_at_utc TEXT NOT NULL,
     responded_at_utc TEXT,
     user_response TEXT CHECK (user_response IN ('approved', 'denied') OR user_response IS NULL),
     response_notes TEXT,
+    requires_admin_release INTEGER NOT NULL DEFAULT 0 CHECK (requires_admin_release IN (0, 1)),
+    admin_decision TEXT CHECK (admin_decision IN ('approved', 'blocked') OR admin_decision IS NULL),
+    admin_id TEXT,
+    admin_notes TEXT,
+    admin_decided_at_utc TEXT,
     FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
@@ -155,7 +222,10 @@ CREATE TABLE IF NOT EXISTS incident_evidence (
 
 CREATE INDEX IF NOT EXISTS idx_tx_user_time ON transactions(user_id, timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_tx_beneficiary ON transactions(beneficiary_id, timestamp_utc);
+CREATE INDEX IF NOT EXISTS idx_tx_status ON transactions(status, timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_auth_user_time ON authentication_events(user_id, timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_device_user_time ON device_events(user_id, timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_ben_user_time ON beneficiary_events(user_id, beneficiary_id, timestamp_utc);
+CREATE INDEX IF NOT EXISTS idx_beneficiaries_user ON beneficiaries(user_id, created_at_utc);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token_hash);
 """

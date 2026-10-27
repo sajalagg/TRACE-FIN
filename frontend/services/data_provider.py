@@ -18,11 +18,22 @@ from services.config import API_BASE_URL, API_TIMEOUT_SECONDS
 # Internal HTTP helpers (FastAPI Client)
 # ---------------------------------------------------------------------------
 
+def _auth_headers() -> Dict[str, str]:
+    """Return Authorization Bearer header if a user session token is active in Streamlit state."""
+    try:
+        token = st.session_state.get("auth_token")
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+    except Exception:
+        pass
+    return {}
+
+
 def _api_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     url = f"{API_BASE_URL}{endpoint}"
     try:
         with httpx.Client(timeout=API_TIMEOUT_SECONDS) as client:
-            resp = client.get(url, params=params)
+            resp = client.get(url, params=params, headers=_auth_headers())
             resp.raise_for_status()
             return {"ok": True, "data": resp.json()}
     except httpx.HTTPStatusError as exc:
@@ -33,14 +44,14 @@ def _api_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str
             pass
         return {"ok": False, "error": f"HTTP {exc.response.status_code}: {detail}", "data": None}
     except Exception as exc:
-        return {"ok": False, "error": f"Cannot reach FastAPI backend at {API_BASE_URL} ({exc})", "data": None}
+        return {"ok": False, "error": f"Service unavailable at {API_BASE_URL} ({exc})", "data": None}
 
 
 def _api_post(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     url = f"{API_BASE_URL}{endpoint}"
     try:
         with httpx.Client(timeout=API_TIMEOUT_SECONDS) as client:
-            resp = client.post(url, json=payload)
+            resp = client.post(url, json=payload, headers=_auth_headers())
             resp.raise_for_status()
             return {"ok": True, "data": resp.json()}
     except httpx.HTTPStatusError as exc:
@@ -51,14 +62,14 @@ def _api_post(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             pass
         return {"ok": False, "error": f"HTTP {exc.response.status_code}: {detail}", "data": None}
     except Exception as exc:
-        return {"ok": False, "error": f"Cannot reach FastAPI backend at {API_BASE_URL} ({exc})", "data": None}
+        return {"ok": False, "error": f"Service unavailable at {API_BASE_URL} ({exc})", "data": None}
 
 
 def _api_patch(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     url = f"{API_BASE_URL}{endpoint}"
     try:
         with httpx.Client(timeout=API_TIMEOUT_SECONDS) as client:
-            resp = client.patch(url, json=payload)
+            resp = client.patch(url, json=payload, headers=_auth_headers())
             resp.raise_for_status()
             return {"ok": True, "data": resp.json()}
     except httpx.HTTPStatusError as exc:
@@ -69,14 +80,14 @@ def _api_patch(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             pass
         return {"ok": False, "error": f"HTTP {exc.response.status_code}: {detail}", "data": None}
     except Exception as exc:
-        return {"ok": False, "error": f"Cannot reach FastAPI backend at {API_BASE_URL} ({exc})", "data": None}
+        return {"ok": False, "error": f"Service unavailable at {API_BASE_URL} ({exc})", "data": None}
 
 
 def _api_put(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     url = f"{API_BASE_URL}{endpoint}"
     try:
         with httpx.Client(timeout=API_TIMEOUT_SECONDS) as client:
-            resp = client.put(url, json=payload)
+            resp = client.put(url, json=payload, headers=_auth_headers())
             resp.raise_for_status()
             return {"ok": True, "data": resp.json()}
     except httpx.HTTPStatusError as exc:
@@ -87,7 +98,7 @@ def _api_put(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             pass
         return {"ok": False, "error": f"HTTP {exc.response.status_code}: {detail}", "data": None}
     except Exception as exc:
-        return {"ok": False, "error": f"Cannot reach FastAPI backend at {API_BASE_URL} ({exc})", "data": None}
+        return {"ok": False, "error": f"Service unavailable at {API_BASE_URL} ({exc})", "data": None}
 
 
 def _score_to_level(score: int) -> str:
@@ -794,3 +805,135 @@ def get_rules_catalog() -> List[Dict[str, Any]]:
     if res["ok"] and isinstance(res["data"], list):
         return res["data"]
     return []
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 & 4: Authentication, Registration, Sessions & User-Scoped Helpers
+# ---------------------------------------------------------------------------
+
+def login_user(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Authenticate a customer or admin via `POST /auth/login`."""
+    res = _api_post("/auth/login", payload)
+    if res["ok"]:
+        invalidate_dataset_cache()
+    return res
+
+
+def register_user(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Register a new customer account via `POST /auth/register`."""
+    res = _api_post("/auth/register", payload)
+    if res["ok"]:
+        invalidate_dataset_cache()
+    return res
+
+
+def logout_user() -> Dict[str, Any]:
+    """Revoke the active session token via `POST /auth/logout`."""
+    res = _api_post("/auth/logout", {})
+    invalidate_dataset_cache()
+    return res
+
+
+def get_current_auth() -> Optional[Dict[str, Any]]:
+    """Return `GET /auth/me` for the currently active session token."""
+    res = _api_get("/auth/me")
+    if res["ok"] and isinstance(res["data"], dict):
+        return res["data"]
+    return None
+
+
+def get_user_sessions(user_id: Optional[str] = None, limit: int = 15) -> List[Dict[str, Any]]:
+    """Fetch recent login sessions and network context via `GET /auth/sessions`."""
+    params: Dict[str, Any] = {"limit": limit}
+    if user_id:
+        params["user_id"] = user_id
+    res = _api_get("/auth/sessions", params=params)
+    if res["ok"] and isinstance(res["data"], list):
+        return res["data"]
+    return []
+
+
+def get_login_network_presets(username: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetch `GET /auth/network-presets` tailored to a user's baseline home IP/location."""
+    params: Dict[str, Any] = {}
+    if username:
+        params["username"] = username
+    res = _api_get("/auth/network-presets", params=params)
+    if res["ok"] and isinstance(res["data"], list):
+        return res["data"]
+    return []
+
+
+def get_user_profile(user_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch `GET /users/{user_id}`."""
+    res = _api_get(f"/users/{user_id}")
+    if res["ok"] and isinstance(res["data"], dict):
+        return res["data"]
+    return None
+
+
+def get_user_preferences_live(user_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch `GET /preferences/{user_id}`."""
+    res = _api_get(f"/preferences/{user_id}")
+    if res["ok"] and isinstance(res["data"], dict):
+        return res["data"]
+    return None
+
+
+def get_verification_requests_live(
+    user_id: Optional[str] = None,
+    status: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Fetch `GET /verification-requests` optionally filtered by user_id or status."""
+    params: Dict[str, Any] = {}
+    if user_id:
+        params["user_id"] = user_id
+    if status:
+        params["status"] = status
+    res = _api_get("/verification-requests", params=params)
+    if res["ok"] and isinstance(res["data"], list):
+        return res["data"]
+    return []
+
+
+def respond_verification_request_live(
+    request_id: str,
+    user_response: str,
+    response_notes: str = "",
+) -> Dict[str, Any]:
+    """Submit a customer response ('approved' or 'denied') to `POST /verification-requests/{request_id}/respond`."""
+    res = _api_post(
+        f"/verification-requests/{request_id}/respond",
+        {"user_response": user_response, "response_notes": response_notes},
+    )
+    if res["ok"]:
+        invalidate_dataset_cache()
+    return res
+
+
+def get_session_detail_live(session_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch `GET /auth/sessions/{session_id}` for Session & Network Intelligence inspection."""
+    res = _api_get(f"/auth/sessions/{session_id}")
+    if res["ok"] and isinstance(res["data"], dict):
+        return res["data"]
+    return None
+
+
+def submit_admin_transaction_decision_live(
+    transaction_id: str,
+    admin_decision: str,
+    admin_notes: str = "Investigated in Risk Analysis Lab and confirmed with account owner.",
+) -> Dict[str, Any]:
+    """Submit an Admin release ('approve') or block ('block') decision via `POST /transactions/{transaction_id}/admin-decision`."""
+    res = _api_post(
+        f"/transactions/{transaction_id}/admin-decision",
+        {
+            "admin_decision": admin_decision,
+            "admin_notes": admin_notes,
+        },
+    )
+    if res["ok"]:
+        invalidate_dataset_cache()
+    return res
+
+

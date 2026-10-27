@@ -226,10 +226,10 @@ else:
 st.divider()
 
 # ── F: Scenario Archetype Overview ────────────────────────────────────────
-st.markdown('<div class="panel-header">8 SYNTHETIC FORENSIC SCENARIO ARCHETYPES (LIVE DATABASE)</div>', unsafe_allow_html=True)
+st.markdown('<div class="panel-header">8 SYNTHETIC FORENSIC SCENARIO ARCHETYPES</div>', unsafe_allow_html=True)
 st.markdown(
     '<p style="color:#8A9CB0;font-size:0.82rem;margin-bottom:14px">'
-    'Eight deterministic scenarios stored in SQLite covering legitimate corporate/personal false-positive traps '
+    'Eight deterministic scenarios covering legitimate corporate/personal false-positive traps '
     'and multi-stage attack lifecycles. Click any scenario button below to load its representative transaction into the Risk Lab.</p>',
     unsafe_allow_html=True,
 )
@@ -266,6 +266,6 @@ with col_atk:
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(
     '<div style="text-align:center;color:#64748B;font-size:0.7rem;padding:12px 0;border-top:1px solid #1E2D3B">'
-    'TRACE-Fin v1.0.0 · Academic Research Prototype · Connected to Live FastAPI + SQLite Engine</div>',
+    'TRACE-Fin v2.0 · Simulated Digital Banking &amp; Forensic Risk Protection</div>',
     unsafe_allow_html=True,
 )

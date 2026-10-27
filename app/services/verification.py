@@ -7,11 +7,14 @@ from typing import List, Optional
 
 from app.core.database import get_connection
 from app.schemas.api_schemas import (
+    AdminDecisionResponseSchema,
+    AdminTransactionDecisionSchema,
     VerificationRequestCreateSchema,
     VerificationRequestSchema,
     VerificationRespondSchema,
 )
 from app.services.incidents import create_or_get_incident_for_denial
+from app.services.transactions import _row_to_tx_summary, _row_to_user_profile
 
 
 class VerificationConflictError(Exception):
@@ -36,6 +39,7 @@ def _row_to_verification_schema(
     ).fetchone()
     linked_inc_id = str(inc_row["incident_id"]) if inc_row is not None else None
 
+    keys = row.keys()
     return VerificationRequestSchema(
         request_id=row["request_id"],
         transaction_id=row["transaction_id"],
@@ -50,6 +54,11 @@ def _row_to_verification_schema(
         responded_at_utc=row["responded_at_utc"],
         user_response=row["user_response"],
         response_notes=row["response_notes"],
+        requires_admin_release=bool(row["requires_admin_release"]) if "requires_admin_release" in keys else False,
+        admin_decision=row["admin_decision"] if "admin_decision" in keys else None,
+        admin_id=row["admin_id"] if "admin_id" in keys else None,
+        admin_notes=row["admin_notes"] if "admin_notes" in keys else None,
+        admin_decided_at_utc=row["admin_decided_at_utc"] if "admin_decided_at_utc" in keys else None,
         linked_incident_id=linked_inc_id,
         created_new=created_new,
     )
@@ -215,11 +224,13 @@ def respond_to_verification_request(
             )
 
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        new_status = (
-            "confirmed_legitimate"
-            if payload.user_response == "approved"
-            else "denied_suspicious"
-        )
+        req_keys = req_row.keys()
+        needs_admin = bool(req_row["requires_admin_release"]) if "requires_admin_release" in req_keys else False
+
+        if payload.user_response == "approved":
+            new_status = "awaiting_admin_release" if needs_admin else "confirmed_legitimate"
+        else:
+            new_status = "denied_suspicious"
 
         conn.execute(
             """
@@ -240,6 +251,16 @@ def respond_to_verification_request(
         )
 
         if payload.user_response == "denied":
+            conn.execute(
+                """
+                UPDATE transactions
+                SET status = 'BLOCKED',
+                    balance_deducted = 0,
+                    decision_reason = 'Blocked following customer denial on verification request.'
+                WHERE transaction_id = ?;
+                """,
+                (req_row["transaction_id"],),
+            )
             create_or_get_incident_for_denial(
                 conn=conn,
                 transaction_id=req_row["transaction_id"],
@@ -248,6 +269,44 @@ def respond_to_verification_request(
                 denial_notes=payload.response_notes,
                 db_path=db_path,
             )
+        else:
+            if needs_admin:
+                conn.execute(
+                    """
+                    UPDATE transactions
+                    SET status = 'HELD_HIGH_RISK',
+                        balance_deducted = 0,
+                        decision_reason = 'Customer confirmed ownership; awaiting Admin investigation & release in Risk Analysis Lab.'
+                    WHERE transaction_id = ?;
+                    """,
+                    (req_row["transaction_id"],),
+                )
+            else:
+                tx_row = conn.execute(
+                    "SELECT amount, user_id, status, balance_deducted FROM transactions WHERE transaction_id = ?;",
+                    (req_row["transaction_id"],),
+                ).fetchone()
+                if tx_row is not None:
+                    already_deducted = bool(tx_row["balance_deducted"]) if "balance_deducted" in tx_row.keys() else True
+                    if not already_deducted and tx_row["status"] in ("PENDING_VERIFICATION", "HELD_HIGH_RISK"):
+                        conn.execute(
+                            """
+                            UPDATE users
+                            SET simulated_balance = ROUND(MAX(0.0, simulated_balance - ?), 2)
+                            WHERE user_id = ?;
+                            """,
+                            (round(float(tx_row["amount"]), 2), tx_row["user_id"]),
+                        )
+                    conn.execute(
+                        """
+                        UPDATE transactions
+                        SET status = 'COMPLETED',
+                            balance_deducted = 1,
+                            decision_reason = 'Approved by customer verification; simulated transfer completed.'
+                        WHERE transaction_id = ?;
+                        """,
+                        (req_row["transaction_id"],),
+                    )
 
         conn.commit()
 
@@ -262,3 +321,181 @@ def respond_to_verification_request(
             (request_id,),
         ).fetchone()
         return _row_to_verification_schema(conn, updated_row, created_new=False)
+
+
+def admin_decide_transaction(
+    transaction_id: str,
+    payload: AdminTransactionDecisionSchema,
+    admin_user_id: str = "ADMIN-001",
+    db_path: Optional[Path] = None,
+) -> Optional[AdminDecisionResponseSchema]:
+    """Allow an Administrator to approve/release or block a pending/held transaction after investigation.
+
+    - If `admin_decision == 'approve'`:
+      - Deducts `amount` from the customer's `simulated_balance` once (if not yet deducted).
+      - Updates `transactions.status = 'COMPLETED'`, `balance_deducted = 1`.
+      - Marks the linked `verification_requests` row `confirmed_legitimate` with `admin_decision = 'approved'`.
+    - If `admin_decision == 'block'`:
+      - Keeps `balance_deducted = 0`, marks `transactions.status = 'BLOCKED'`.
+      - Marks the linked `verification_requests` row `denied_suspicious` with `admin_decision = 'blocked'`.
+      - Automatically creates/links a tamper-evident SHA-256 forensic incident.
+    """
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    with get_connection(db_path) as conn:
+        tx_row = conn.execute(
+            "SELECT * FROM transactions WHERE transaction_id = ?;",
+            (transaction_id,),
+        ).fetchone()
+        if tx_row is None:
+            return None
+
+        uid = tx_row["user_id"]
+        user_row = conn.execute(
+            "SELECT * FROM users WHERE user_id = ?;",
+            (uid,),
+        ).fetchone()
+        if user_row is None:
+            return None
+
+        ver_row = conn.execute(
+            """
+            SELECT * FROM verification_requests
+            WHERE transaction_id = ?
+            ORDER BY created_at_utc DESC LIMIT 1;
+            """,
+            (transaction_id,),
+        ).fetchone()
+
+        if ver_row is None:
+            cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM verification_requests;").fetchone()["cnt"])
+            req_id = f"VER-{cnt + 1:04d}"
+            while conn.execute("SELECT 1 FROM verification_requests WHERE request_id = ?;", (req_id,)).fetchone():
+                cnt += 1
+                req_id = f"VER-{cnt + 1:04d}"
+            conn.execute(
+                """
+                INSERT INTO verification_requests (
+                    request_id, transaction_id, user_id, status,
+                    created_at_utc, requires_admin_release
+                ) VALUES (?, ?, ?, 'pending', ?, 1);
+                """,
+                (req_id, transaction_id, uid, now_utc),
+            )
+        else:
+            req_id = str(ver_row["request_id"])
+
+        tx_keys = tx_row.keys()
+        current_tx_status = str(tx_row["status"]) if "status" in tx_keys and tx_row["status"] else "COMPLETED"
+        already_deducted = bool(tx_row["balance_deducted"]) if "balance_deducted" in tx_keys else True
+        tx_amount = round(float(tx_row["amount"]), 2)
+        notes = (payload.admin_notes or "Investigated in Risk Analysis Lab and confirmed with account owner.").strip()
+
+        if payload.admin_decision == "approve":
+            if current_tx_status == "BLOCKED":
+                raise VerificationConflictError(
+                    f"Transaction '{transaction_id}' has already been BLOCKED and cannot be released."
+                )
+            if not already_deducted:
+                current_bal = float(user_row["simulated_balance"]) if "simulated_balance" in user_row.keys() else 25000.0
+                if tx_amount > current_bal:
+                    raise ValueError(
+                        f"Cannot release transfer: customer simulated balance (${current_bal:,.2f}) is lower than transfer amount (${tx_amount:,.2f})."
+                    )
+                conn.execute(
+                    """
+                    UPDATE users
+                    SET simulated_balance = ROUND(MAX(0.0, simulated_balance - ?), 2)
+                    WHERE user_id = ?;
+                    """,
+                    (tx_amount, uid),
+                )
+            conn.execute(
+                """
+                UPDATE transactions
+                SET status = 'COMPLETED',
+                    balance_deducted = 1,
+                    decision_reason = ?
+                WHERE transaction_id = ?;
+                """,
+                (f"Released & completed by Admin ({admin_user_id}) after Risk Analysis Lab investigation: {notes}", transaction_id),
+            )
+            conn.execute(
+                """
+                UPDATE verification_requests
+                SET status = 'confirmed_legitimate',
+                    admin_decision = 'approved',
+                    admin_id = ?,
+                    admin_notes = ?,
+                    admin_decided_at_utc = ?,
+                    responded_at_utc = COALESCE(responded_at_utc, ?)
+                WHERE request_id = ?;
+                """,
+                (admin_user_id, notes, now_utc, now_utc, req_id),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE transactions
+                SET status = 'BLOCKED',
+                    balance_deducted = 0,
+                    decision_reason = ?
+                WHERE transaction_id = ?;
+                """,
+                (f"Blocked by Admin ({admin_user_id}) during Risk Analysis Lab investigation: {notes}", transaction_id),
+            )
+            conn.execute(
+                """
+                UPDATE verification_requests
+                SET status = 'denied_suspicious',
+                    admin_decision = 'blocked',
+                    admin_id = ?,
+                    admin_notes = ?,
+                    admin_decided_at_utc = ?,
+                    responded_at_utc = COALESCE(responded_at_utc, ?)
+                WHERE request_id = ?;
+                """,
+                (admin_user_id, notes, now_utc, now_utc, req_id),
+            )
+            create_or_get_incident_for_denial(
+                conn=conn,
+                transaction_id=transaction_id,
+                verification_request_id=req_id,
+                user_id=uid,
+                denial_notes=f"[Admin Block by {admin_user_id}] {notes}",
+                db_path=db_path,
+            )
+
+        conn.commit()
+
+        updated_tx = conn.execute(
+            """
+            SELECT t.*, u.display_name, u.profile_type, u.expenditure_model
+            FROM transactions t
+            JOIN users u ON t.user_id = u.user_id
+            WHERE t.transaction_id = ?;
+            """,
+            (transaction_id,),
+        ).fetchone()
+        updated_user = conn.execute(
+            "SELECT * FROM users WHERE user_id = ?;",
+            (uid,),
+        ).fetchone()
+        updated_ver = conn.execute(
+            """
+            SELECT vr.*, t.amount, t.currency, t.beneficiary_id, t.beneficiary_name, u.display_name
+            FROM verification_requests vr
+            JOIN transactions t ON vr.transaction_id = t.transaction_id
+            JOIN users u ON vr.user_id = u.user_id
+            WHERE vr.request_id = ?;
+            """,
+            (req_id,),
+        ).fetchone()
+        ver_schema = _row_to_verification_schema(conn, updated_ver, created_new=False)
+
+    return AdminDecisionResponseSchema(
+        transaction=_row_to_tx_summary(updated_tx),
+        user_profile=_row_to_user_profile(updated_user),
+        verification_request=ver_schema,
+        linked_incident_id=ver_schema.linked_incident_id,
+    )

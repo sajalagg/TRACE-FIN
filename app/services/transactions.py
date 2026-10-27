@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from app.core.database import get_connection
+from app.core.policy import TX_STATUS_COMPLETED, evaluate_transfer_policy
+from app.core.security import hash_password
 from app.schemas.api_schemas import (
     AuthenticationEventSchema,
     BeneficiaryEventCreateSchema,
@@ -25,8 +27,12 @@ from app.services.scoring import compare_transaction_scores
 
 def _row_to_user_profile(row: sqlite3.Row) -> UserProfileSchema:
     """Convert a SQLite `users` row into a `UserProfileSchema`."""
+    keys = row.keys()
     return UserProfileSchema(
         user_id=row["user_id"],
+        username=row["username"] if "username" in keys else None,
+        role=row["role"] if "role" in keys and row["role"] else "customer",
+        simulated_balance=float(row["simulated_balance"]) if "simulated_balance" in keys else 10000.0,
         display_name=row["display_name"],
         account_category=row["account_category"],
         profile_type=row["profile_type"],
@@ -40,12 +46,18 @@ def _row_to_user_profile(row: sqlite3.Row) -> UserProfileSchema:
         expected_monthly_tx_count=int(row["expected_monthly_tx_count"]),
         operating_hours_utc=row["operating_hours_utc"],
         home_geo_location=row["home_geo_location"],
+        home_ip_prefix=(
+            row["home_ip_prefix"]
+            if "home_ip_prefix" in keys and row["home_ip_prefix"]
+            else "103.21.244."
+        ),
         created_at_utc=row["created_at_utc"],
     )
 
 
 def _row_to_tx_summary(row: sqlite3.Row) -> TransactionSummarySchema:
     """Convert a joined `transactions` + `users` row into a `TransactionSummarySchema`."""
+    keys = row.keys()
     return TransactionSummarySchema(
         transaction_id=row["transaction_id"],
         user_id=row["user_id"],
@@ -62,17 +74,27 @@ def _row_to_tx_summary(row: sqlite3.Row) -> TransactionSummarySchema:
         device_id=row["device_id"],
         ip_address=row["ip_address"],
         geo_location=row["geo_location"],
+        status=row["status"] if "status" in keys and row["status"] else "COMPLETED",
+        decision_reason=(
+            row["decision_reason"]
+            if "decision_reason" in keys and row["decision_reason"]
+            else "Approved under baseline simulation policy."
+        ),
+        notes=row["notes"] if "notes" in keys else None,
+        balance_deducted=bool(row["balance_deducted"]) if "balance_deducted" in keys else True,
+        session_id=row["session_id"] if "session_id" in keys else None,
     )
 
 
 def list_users(
     expenditure_model: Optional[str] = None,
     profile_type: Optional[str] = None,
+    role: str = "customer",
     db_path: Optional[Path] = None,
 ) -> List[UserProfileSchema]:
     """Return synthetic user profiles, optionally filtered by expenditure model or profile type."""
-    clauses: List[str] = []
-    params: List[object] = []
+    clauses: List[str] = ["role = ?"]
+    params: List[object] = [role]
 
     if expenditure_model:
         clauses.append("expenditure_model = ?")
@@ -295,25 +317,47 @@ def create_user_profile(
                 raise ValueError(f"User ID '{payload.user_id}' already exists.")
             user_id = payload.user_id
         else:
-            cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM users;").fetchone()["cnt"])
+            cnt = int(
+                conn.execute(
+                    "SELECT COUNT(*) AS cnt FROM users WHERE user_id LIKE 'USR-%';"
+                ).fetchone()["cnt"]
+            )
             user_id = f"USR-{cnt + 1:03d}"
             while conn.execute("SELECT 1 FROM users WHERE user_id = ?;", (user_id,)).fetchone():
                 cnt += 1
                 user_id = f"USR-{cnt + 1:03d}"
 
+        username_val = (payload.username or user_id.lower()).strip().lower()
+        existing_uname = conn.execute(
+            "SELECT user_id FROM users WHERE LOWER(username) = ?;",
+            (username_val,),
+        ).fetchone()
+        if existing_uname is not None:
+            raise ValueError(f"Username '{username_val}' is already registered.")
+
+        pw_hash = hash_password(payload.password or "DemoUser@123")
+        if payload.simulated_balance != 25000.0:
+            sim_bal = round(float(payload.simulated_balance), 2)
+        else:
+            sim_bal = round(max(25000.0, float(payload.declared_monthly_turnover) * 1.5), 2)
+
         conn.execute(
             """
             INSERT INTO users (
-                user_id, display_name, account_category, profile_type,
+                user_id, username, password_hash, role, simulated_balance,
+                display_name, account_category, profile_type,
                 industry_sector, expenditure_model, net_worth_band,
                 estimated_net_worth, declared_monthly_turnover,
                 typical_tx_amount, typical_max_tx_amount,
                 expected_monthly_tx_count, operating_hours_utc,
-                home_geo_location, created_at_utc
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                home_geo_location, home_ip_prefix, created_at_utc
+            ) VALUES (?, ?, ?, 'customer', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '103.21.244.', ?);
             """,
             (
                 user_id,
+                username_val,
+                pw_hash,
+                sim_bal,
                 payload.display_name,
                 payload.account_category,
                 payload.profile_type,
@@ -441,6 +485,38 @@ def create_beneficiary_event(
                 payload.notes,
             ),
         )
+
+        # Keep `beneficiaries` table synchronized with beneficiary events
+        acct_ref = f"SYNTH-REF-{ben_id}"
+        is_ver = 1 if payload.event_type == "beneficiary_verified" else 0
+        conn.execute(
+            """
+            INSERT INTO beneficiaries (
+                beneficiary_id, user_id, display_name, account_reference,
+                beneficiary_category, beneficiary_industry, status,
+                is_verified, created_at_utc, updated_at_utc, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)
+            ON CONFLICT(user_id, beneficiary_id) DO UPDATE SET
+                display_name = excluded.display_name,
+                beneficiary_category = excluded.beneficiary_category,
+                beneficiary_industry = excluded.beneficiary_industry,
+                is_verified = CASE WHEN excluded.is_verified = 1 THEN 1 ELSE beneficiaries.is_verified END,
+                updated_at_utc = excluded.updated_at_utc,
+                notes = COALESCE(excluded.notes, beneficiaries.notes);
+            """,
+            (
+                ben_id,
+                payload.user_id,
+                payload.beneficiary_name,
+                acct_ref,
+                payload.beneficiary_category,
+                payload.beneficiary_industry,
+                is_ver,
+                ts_str,
+                ts_str,
+                payload.notes,
+            ),
+        )
         conn.commit()
 
         row = conn.execute(
@@ -486,8 +562,30 @@ def create_live_transaction(
             return None
 
         uid = payload.user_id
+        user_keys = user_row.keys()
+        current_balance = (
+            float(user_row["simulated_balance"])
+            if "simulated_balance" in user_keys and user_row["simulated_balance"] is not None
+            else 25000.0
+        )
+        req_amount = round(float(payload.amount), 2)
+        if req_amount > current_balance:
+            raise ValueError(
+                f"Insufficient simulated balance: requested ${req_amount:,.2f} exceeds available balance ${current_balance:,.2f}."
+            )
+
         home_geo = user_row["home_geo_location"]
         tx_geo = payload.geo_location or home_geo
+
+        sess_row = conn.execute(
+            """
+            SELECT session_id FROM user_sessions
+            WHERE user_id = ? AND is_revoked = 0
+            ORDER BY created_at_utc DESC LIMIT 1;
+            """,
+            (uid,),
+        ).fetchone()
+        linked_session_id = str(sess_row["session_id"]) if sess_row is not None else None
 
         # Determine device_id
         known_dev_row = conn.execute(
@@ -569,24 +667,45 @@ def create_live_transaction(
                 ),
             )
 
-        # 3. Record successful session login 6 minutes prior to transaction
-        auth_cnt += 1
-        conn.execute(
+        # 3. Record successful session login 6 minutes prior to transaction (unless a real login session already logged this within 60m)
+        recent_login_exists = conn.execute(
             """
-            INSERT INTO authentication_events (
-                event_id, user_id, timestamp_utc, event_type,
-                ip_address, geo_location, device_id, is_success
-            ) VALUES (?, ?, ?, 'login_success', ?, ?, ?, 1);
+            SELECT 1 FROM authentication_events
+            WHERE user_id = ?
+              AND event_type = 'login_success'
+              AND ip_address = ?
+              AND device_id = ?
+              AND timestamp_utc >= ?
+              AND timestamp_utc <= ?
+            LIMIT 1;
             """,
             (
-                f"AUTH-EVT-{auth_cnt:04d}",
                 uid,
-                _fmt(tx_dt - timedelta(minutes=6)),
                 payload.ip_address,
-                tx_geo,
                 dev_id,
+                _fmt(tx_dt - timedelta(minutes=60)),
+                ts_str,
             ),
-        )
+        ).fetchone()
+
+        if recent_login_exists is None or payload.simulate_impossible_travel_from_home or payload.simulate_failed_logins > 0:
+            auth_cnt += 1
+            conn.execute(
+                """
+                INSERT INTO authentication_events (
+                    event_id, user_id, timestamp_utc, event_type,
+                    ip_address, geo_location, device_id, is_success
+                ) VALUES (?, ?, ?, 'login_success', ?, ?, ?, 1);
+                """,
+                (
+                    f"AUTH-EVT-{auth_cnt:04d}",
+                    uid,
+                    _fmt(tx_dt - timedelta(minutes=6)),
+                    payload.ip_address,
+                    tx_geo,
+                    dev_id,
+                ),
+            )
 
         # 4. Optional Rapid New Beneficiary or Vendor BEC Bank Modification
         ben_ev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM beneficiary_events;").fetchone()["cnt"])
@@ -650,13 +769,14 @@ def create_live_transaction(
                 transaction_id, user_id, amount, currency, timestamp_utc,
                 beneficiary_id, beneficiary_name, beneficiary_category,
                 beneficiary_industry, device_id, ip_address, geo_location,
-                is_suspicious, scenario_label
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live_custom_demo');
+                is_suspicious, scenario_label, status, decision_reason,
+                balance_deducted, session_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live_custom_demo', 'COMPLETED', 'Pending policy evaluation.', 0, ?);
             """,
             (
                 tx_id,
                 uid,
-                round(payload.amount, 2),
+                req_amount,
                 payload.currency,
                 ts_str,
                 payload.beneficiary_id,
@@ -667,8 +787,86 @@ def create_live_transaction(
                 payload.ip_address,
                 tx_geo,
                 is_susp_flag,
+                linked_session_id,
             ),
         )
+        conn.commit()
+
+    comparison = compare_transaction_scores(transaction_id=tx_id, db_path=db_path)
+    alert_dec = evaluate_alert_decision(
+        transaction_id=tx_id,
+        method="contextual_ti",
+        db_path=db_path,
+    )
+    assert comparison is not None and alert_dec is not None
+
+    policy = evaluate_transfer_policy(
+        risk_score=comparison.contextual_ti.risk_score,
+        user_alert_threshold=comparison.user_alert_threshold,
+    )
+
+    with get_connection(db_path) as conn:
+        if policy.resulting_status == TX_STATUS_COMPLETED:
+            conn.execute(
+                """
+                UPDATE users
+                SET simulated_balance = ROUND(MAX(0.0, simulated_balance - ?), 2)
+                WHERE user_id = ?;
+                """,
+                (req_amount, uid),
+            )
+            conn.execute(
+                """
+                UPDATE transactions
+                SET status = ?,
+                    decision_reason = ?,
+                    balance_deducted = 1
+                WHERE transaction_id = ?;
+                """,
+                (policy.resulting_status, policy.plain_language_summary, tx_id),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE transactions
+                SET status = ?,
+                    decision_reason = ?,
+                    balance_deducted = 0
+                WHERE transaction_id = ?;
+                """,
+                (policy.resulting_status, policy.plain_language_summary, tx_id),
+            )
+            existing_ver = conn.execute(
+                "SELECT request_id FROM verification_requests WHERE transaction_id = ?;",
+                (tx_id,),
+            ).fetchone()
+            if existing_ver is None:
+                ver_cnt = int(
+                    conn.execute("SELECT COUNT(*) AS cnt FROM verification_requests;").fetchone()["cnt"]
+                )
+                req_id = f"VER-{ver_cnt + 1:04d}"
+                while conn.execute(
+                    "SELECT 1 FROM verification_requests WHERE request_id = ?;",
+                    (req_id,),
+                ).fetchone():
+                    ver_cnt += 1
+                    req_id = f"VER-{ver_cnt + 1:04d}"
+                conn.execute(
+                    """
+                    INSERT INTO verification_requests (
+                        request_id, transaction_id, user_id, status,
+                        created_at_utc, responded_at_utc, user_response,
+                        response_notes, requires_admin_release
+                    ) VALUES (?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?);
+                    """,
+                    (
+                        req_id,
+                        tx_id,
+                        uid,
+                        ts_str,
+                        1 if policy.requires_admin_release else 0,
+                    ),
+                )
         conn.commit()
 
         joined_tx = conn.execute(
@@ -682,13 +880,6 @@ def create_live_transaction(
         ).fetchone()
 
     tx_summary = _row_to_tx_summary(joined_tx)
-    comparison = compare_transaction_scores(transaction_id=tx_id, db_path=db_path)
-    alert_dec = evaluate_alert_decision(
-        transaction_id=tx_id,
-        method="contextual_ti",
-        db_path=db_path,
-    )
-    assert comparison is not None and alert_dec is not None
 
     return TransactionCreateResponseSchema(
         transaction=tx_summary,

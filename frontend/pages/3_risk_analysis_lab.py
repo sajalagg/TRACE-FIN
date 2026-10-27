@@ -17,8 +17,12 @@ from services.data_provider import (
     get_alert_decision,
     get_risk_scores,
     get_scenario_summary,
+    get_session_detail_live,
     get_transaction,
     get_transactions,
+    get_user_sessions,
+    get_verification_requests_live,
+    submit_admin_transaction_decision_live,
     update_user_preferences_live,
 )
 from ui.components import (
@@ -31,6 +35,7 @@ from ui.components import (
     render_demo_banner,
     render_financial_calibration_card,
     render_score_card,
+    status_badge_html,
 )
 
 inject_css()
@@ -52,6 +57,41 @@ st.divider()
 scenarios = get_scenario_summary()
 all_txs = get_transactions()
 all_tx_ids = [t["id"] for t in all_txs]
+
+pending_or_held_txs = [
+    t for t in all_txs
+    if t.get("raw_status") in ("PENDING_VERIFICATION", "HELD_HIGH_RISK")
+    or t.get("status") in ("Pending Review", "Flagged")
+]
+
+if pending_or_held_txs:
+    with st.expander(
+        f"🚨 Pending / Held Transfers Awaiting Admin Investigation & Release ({len(pending_or_held_txs)})",
+        expanded=True,
+    ):
+        st.caption(
+            "Select any pending or held transfer below to load its 3-method forensic breakdown, "
+            "inspect the customer's login session & network context, and complete or block the transfer."
+        )
+        q_cols = st.columns([3.5, 1.5])
+        with q_cols[0]:
+            queue_tx_id = st.selectbox(
+                "Pending / Held Transfer Queue",
+                options=[t["id"] for t in pending_or_held_txs],
+                format_func=lambda tid: (
+                    f"{tid} · {get_transaction(tid)['sender_name']} → {get_transaction(tid)['beneficiary_name']} · "
+                    f"{fmt_currency(get_transaction(tid)['amount'])} · "
+                    f"[{get_transaction(tid).get('raw_status', get_transaction(tid)['status'])}] "
+                    f"(M3={get_transaction(tid)['method3_score']}/100)"
+                ),
+                key="risk_lab_pending_queue_select",
+            )
+        with q_cols[1]:
+            st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
+            if st.button("🔍 Load into Lab", use_container_width=True, key="btn_load_pending_into_lab"):
+                st.session_state["selected_tx_id"] = queue_tx_id
+                st.session_state["risk_custom_tx_selector"] = queue_tx_id
+                st.rerun()
 
 preset_map = {
     f"{s['id']} — {s['name']} ({s['type']}) [{s['tx_id']}]": s["tx_id"]
@@ -107,7 +147,7 @@ tx = get_transaction(selected_tx_id)
 scores = get_risk_scores(selected_tx_id)
 
 if not tx or not scores:
-    st.error(f"Transaction '{selected_tx_id}' not found in SQLite database.")
+    st.error(f"Transaction '{selected_tx_id}' not found.")
     st.stop()
 
 st.divider()
@@ -149,6 +189,139 @@ padding:14px 20px;margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap;align-
 )
 
 render_financial_calibration_card(tx)
+
+# ── Session & Network Intelligence Inspector + Admin Release Panel ────────
+raw_tx_status = tx.get("raw_status") or tx.get("status", "COMPLETED")
+tx_session_id = tx.get("session_id")
+sess_detail = get_session_detail_live(tx_session_id) if tx_session_id else None
+if not sess_detail:
+    recent_user_sessions = get_user_sessions(user_id=tx["sender_id"], limit=1)
+    if recent_user_sessions:
+        sess_detail = recent_user_sessions[0]
+
+ver_list_for_tx = [
+    v for v in get_verification_requests_live(user_id=tx["sender_id"])
+    if v.get("transaction_id") == selected_tx_id
+]
+ver_rec = ver_list_for_tx[0] if ver_list_for_tx else None
+
+intel_col, release_col = st.columns([1.35, 1.15], gap="large")
+
+with intel_col:
+    st.markdown(
+        '<div class="panel-header">SESSION &amp; NETWORK INTELLIGENCE (OBSERVED · SIMULATED · INFERRED)</div>',
+        unsafe_allow_html=True,
+    )
+    if sess_detail:
+        obs = sess_detail.get("observed_evidence") or {}
+        sim = sess_detail.get("simulated_input") or {}
+        inf = sess_detail.get("inferred_context") or {}
+        st.markdown(
+            f"""
+<div style="background:#0E1720;border:1px solid #223342;border-radius:8px;padding:14px 18px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span style="font-size:0.76rem;color:#21D4C2;font-weight:700;font-family:monospace">
+      Session {sess_detail.get("session_id","—")} · User {sess_detail.get("user_id","—")}
+    </span>
+    <span style="font-size:0.71rem;color:#94A3B8">{fmt_ts(sess_detail.get("created_at_utc",""))}</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:0.76rem">
+    <div style="background:#13202B;border:1px solid #223342;border-radius:6px;padding:8px 10px">
+      <div style="color:#67E8F9;font-weight:700;font-size:0.65rem;text-transform:uppercase;margin-bottom:4px">1. Observed Telemetry</div>
+      <div>Failed Logins (1h): <b>{obs.get("failed_logins_1h", sess_detail.get("failed_logins_1h", 0))}</b></div>
+      <div>Active Session: <b>{"Yes" if obs.get("is_active", True) else "Revoked"}</b></div>
+    </div>
+    <div style="background:#13202B;border:1px solid #223342;border-radius:6px;padding:8px 10px">
+      <div style="color:#FDE68A;font-weight:700;font-size:0.65rem;text-transform:uppercase;margin-bottom:4px">2. Simulated Input</div>
+      <div>IP: <code>{sim.get("ip_address", sess_detail.get("ip_address","—"))}</code></div>
+      <div>Network: <code>{sim.get("network_type", sess_detail.get("network_type","—"))}</code></div>
+      <div>Device: <code>{sim.get("device_id", sess_detail.get("device_id","—"))}</code></div>
+    </div>
+    <div style="background:#13202B;border:1px solid #223342;border-radius:6px;padding:8px 10px">
+      <div style="color:#A78BFA;font-weight:700;font-size:0.65rem;text-transform:uppercase;margin-bottom:4px">3. Inferred Context</div>
+      <div>Geo: <b>{inf.get("geo_location", sess_detail.get("geo_location","—"))}</b> (Home: {inf.get("home_geo_location", tx.get("sender_home_geo","—"))})</div>
+      <div>Known IP/Device: <b>{"Yes" if inf.get("is_known_ip") else "No"}</b> / <b>{"Yes" if inf.get("is_known_device") else "No"}</b></div>
+      <div>Threat Intel Match: <b style="color:{'#EF4444' if inf.get('active_threat_intel_match') else '#10B981'}">{"ACTIVE MATCH" if inf.get("active_threat_intel_match") else "Clean"}</b></div>
+    </div>
+  </div>
+  <div style="font-size:0.74rem;color:#CBD5E1;margin-top:8px;padding-top:6px;border-top:1px solid #1E2D3B">
+    <b>Context Summary:</b> {inf.get("context_summary","Session telemetry correlated with baseline profile.")}
+  </div>
+</div>""",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f"""
+<div style="background:#0E1720;border:1px solid #223342;border-radius:8px;padding:14px 18px;font-size:0.78rem;color:#CBD5E1">
+  <div><b>Transaction Network Telemetry:</b> Origin IP <code>{tx.get("ip_address","—")}</code> ({tx.get("geo_location","—")}) · Device <code>{tx.get("device_id","—")}</code></div>
+  <div style="margin-top:4px;color:#8A9CB0">Customer Home Location Baseline: <b>{tx.get("sender_home_geo","—")}</b> · Policy Status: <code>{raw_tx_status}</code></div>
+</div>""",
+            unsafe_allow_html=True,
+        )
+
+with release_col:
+    st.markdown(
+        '<div class="panel-header">ADMIN INVESTIGATION &amp; TRANSFER RELEASE</div>',
+        unsafe_allow_html=True,
+    )
+    bal_deducted_flag = bool(tx.get("balance_deducted", True))
+    ver_status_str = ver_rec.get("status", "none") if ver_rec else "none"
+    user_resp_str = ver_rec.get("user_response") or "Not yet responded" if ver_rec else "No verification request"
+
+    st.markdown(
+        f"""
+<div style="background:#0E1720;border:1px solid #223342;border-radius:8px;padding:12px 16px;margin-bottom:8px;font-size:0.78rem">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <span>Transfer Lifecycle Status: {status_badge_html(raw_tx_status)}</span>
+    <span style="color:#94A3B8">Balance Deducted: <b>{"Yes" if bal_deducted_flag else "No (On Hold)"}</b></span>
+  </div>
+  <div style="color:#CBD5E1">Customer Verification Status: <code>{ver_status_str}</code> (Customer Response: <b>{user_resp_str}</b>)</div>
+  <div style="color:#8A9CB0;font-size:0.73rem;margin-top:4px">{tx.get("decision_reason","")}</div>
+</div>""",
+        unsafe_allow_html=True,
+    )
+
+    admin_note_input = st.text_input(
+        "Admin Investigation & Owner Confirmation Note",
+        value="Investigated 3-method risk & session context in Lab; confirmed transfer intent with account owner.",
+        key=f"admin_lab_note_{selected_tx_id}",
+    )
+    ac1, ac2 = st.columns(2)
+    with ac1:
+        if st.button(
+            "✅ Complete Transfer",
+            key=f"btn_admin_approve_{selected_tx_id}",
+            use_container_width=True,
+            disabled=(raw_tx_status == "BLOCKED"),
+        ):
+            res = submit_admin_transaction_decision_live(selected_tx_id, "approve", admin_note_input)
+            if res["ok"]:
+                st.success(
+                    f"Transfer `{selected_tx_id}` released and marked COMPLETED. Simulated balance updated."
+                )
+                st.rerun()
+            else:
+                st.error(res.get("error", "Could not approve transaction."))
+    with ac2:
+        if st.button(
+            "🛑 Block & Escalate",
+            key=f"btn_admin_block_{selected_tx_id}",
+            type="primary",
+            use_container_width=True,
+        ):
+            res = submit_admin_transaction_decision_live(selected_tx_id, "block", admin_note_input)
+            if res["ok"]:
+                inc_id = (res.get("data") or {}).get("linked_incident_id")
+                st.warning(
+                    f"Transfer `{selected_tx_id}` BLOCKED (simulated balance untouched). "
+                    f"Forensic Incident `{inc_id}` created."
+                )
+                st.rerun()
+            else:
+                st.error(res.get("error", "Could not block transaction."))
+
+st.divider()
 
 # ── Score Cards (side-by-side) ────────────────────────────────────────────
 st.markdown(
@@ -268,7 +441,7 @@ for tab_obj, method_key in [(rtab1, "method3"), (rtab2, "method2"), (rtab3, "met
       <th style="padding:8px 10px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Category</th>
       <th style="padding:8px 10px;text-align:center;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Points</th>
       <th style="padding:8px 10px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Forensic Explanation</th>
-      <th style="padding:8px 10px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">SQLite Provenance Refs</th>
+      <th style="padding:8px 10px;text-align:left;font-size:0.65rem;color:#8A9CB0;text-transform:uppercase">Evidence Provenance Refs</th>
     </tr>
   </thead>
   <tbody>{r_rows}</tbody>
@@ -317,7 +490,7 @@ st.divider()
 
 # ── Live Alert Policy Simulator (`GET /transactions/{id}/alert-decision`) ─
 st.markdown(
-    '<div class="panel-header">LIVE ALERT POLICY &amp; QUIET-HOURS SIMULATOR (FASTAPI STAGE 6 ENGINE)</div>',
+    '<div class="panel-header">ALERT POLICY &amp; QUIET-HOURS SIMULATOR</div>',
     unsafe_allow_html=True,
 )
 st.markdown(
@@ -405,7 +578,7 @@ with apc3:
         key="ap_tz",
     )
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-    if st.button("💾 Save Policy Preferences to SQLite", use_container_width=True, key="save_prefs_btn"):
+    if st.button("💾 Save Alert Policy Preferences", use_container_width=True, key="save_prefs_btn"):
         save_res = update_user_preferences_live(
             tx["sender_id"],
             {
@@ -418,7 +591,7 @@ with apc3:
             },
         )
         if save_res["ok"]:
-            st.success(f"Saved updated alert preferences for {tx['sender_id']} in SQLite!")
+            st.success(f"Saved updated alert preferences for {tx['sender_id']}!")
         else:
             st.error(save_res.get("error", "Failed to save preferences."))
 

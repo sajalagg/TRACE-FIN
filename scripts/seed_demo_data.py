@@ -8,14 +8,20 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.config import get_db_path
 from app.core.database import get_connection, init_db
+from app.core.security import hash_password
 
 DEFAULT_SEED = 42
 DEFAULT_TOTAL_TRANSACTIONS = 500
+DEMO_CUSTOMER_PASSWORD = "DemoUser@123"
+DEMO_ADMIN_PASSWORD = "AdminTrace@123"
+_DETERMINISTIC_CUSTOMER_SALT = "a1b2c3d4e5f600112233445566778899"
+_DETERMINISTIC_ADMIN_SALT = "99887766554433221100f6e5d4c3b2a1"
 
 
 USER_PROFILES: List[Dict[str, Any]] = [
     {
         "user_id": "USR-001",
+        "username": "aarav.sharma",
         "display_name": "Aarav Sharma (University Student)",
         "account_category": "individual",
         "profile_type": "student",
@@ -32,9 +38,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "103.21.244.",
         "timezone_iana": "Asia/Kolkata",
         "risk_threshold": 55,
+        "simulated_balance": 3250.00,
     },
     {
         "user_id": "USR-002",
+        "username": "maya.lin",
         "display_name": "Maya Lin (Graduate Researcher)",
         "account_category": "individual",
         "profile_type": "student",
@@ -51,9 +59,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "116.14.120.",
         "timezone_iana": "Asia/Singapore",
         "risk_threshold": 60,
+        "simulated_balance": 4800.00,
     },
     {
         "user_id": "USR-003",
+        "username": "rohan.patel",
         "display_name": "Rohan Patel (Salaried Engineer)",
         "account_category": "individual",
         "profile_type": "salaried_individual",
@@ -70,9 +80,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "106.51.72.",
         "timezone_iana": "Asia/Kolkata",
         "risk_threshold": 60,
+        "simulated_balance": 18500.00,
     },
     {
         "user_id": "USR-004",
+        "username": "elena.rostova",
         "display_name": "Elena Rostova (Senior Analyst)",
         "account_category": "individual",
         "profile_type": "salaried_individual",
@@ -89,9 +101,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "81.2.69.",
         "timezone_iana": "Europe/London",
         "risk_threshold": 65,
+        "simulated_balance": 24600.00,
     },
     {
         "user_id": "USR-005",
+        "username": "marcus.vance",
         "display_name": "Marcus Vance (Independent UX Consultant)",
         "account_category": "individual",
         "profile_type": "freelancer",
@@ -108,9 +122,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "74.125.224.",
         "timezone_iana": "America/New_York",
         "risk_threshold": 60,
+        "simulated_balance": 42000.00,
     },
     {
         "user_id": "USR-006",
+        "username": "vikram.singhania",
         "display_name": "Vikramaditya Singhania (Private Wealth HNW)",
         "account_category": "individual",
         "profile_type": "high_net_worth",
@@ -127,9 +143,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "94.200.14.",
         "timezone_iana": "Asia/Dubai",
         "risk_threshold": 70,
+        "simulated_balance": 385000.00,
     },
     {
         "user_id": "USR-007",
+        "username": "novamart.retail",
         "display_name": "NovaMart Retail Pvt Ltd (OpEx E-Commerce SME)",
         "account_category": "business",
         "profile_type": "sme_opex_merchant",
@@ -146,9 +164,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "103.48.19.",
         "timezone_iana": "Asia/Kolkata",
         "risk_threshold": 60,
+        "simulated_balance": 115000.00,
     },
     {
         "user_id": "USR-008",
+        "username": "cloudpulse.saas",
         "display_name": "CloudPulse Systems Inc (OpEx SaaS SME)",
         "account_category": "business",
         "profile_type": "sme_opex_merchant",
@@ -165,9 +185,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "172.56.21.",
         "timezone_iana": "America/Los_Angeles",
         "risk_threshold": 65,
+        "simulated_balance": 168000.00,
     },
     {
         "user_id": "USR-009",
+        "username": "saffron.hospitality",
         "display_name": "Saffron Table Hospitality Group (OpEx Restaurant SME)",
         "account_category": "business",
         "profile_type": "sme_opex_merchant",
@@ -184,9 +206,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "86.14.90.",
         "timezone_iana": "Europe/London",
         "risk_threshold": 55,
+        "simulated_balance": 74000.00,
     },
     {
         "user_id": "USR-010",
+        "username": "apex.forge",
         "display_name": "Apex Forge & Turbines Ltd (CapEx Manufacturing)",
         "account_category": "business",
         "profile_type": "enterprise_capex_firm",
@@ -203,9 +227,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "115.112.44.",
         "timezone_iana": "Asia/Kolkata",
         "risk_threshold": 65,
+        "simulated_balance": 920000.00,
     },
     {
         "user_id": "USR-011",
+        "username": "terrabuild.infra",
         "display_name": "TerraBuild Civil Infrastructure Corp (CapEx Construction)",
         "account_category": "business",
         "profile_type": "enterprise_capex_firm",
@@ -222,9 +248,11 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "94.202.88.",
         "timezone_iana": "Asia/Dubai",
         "risk_threshold": 65,
+        "simulated_balance": 780000.00,
     },
     {
         "user_id": "USR-012",
+        "username": "helios.grid",
         "display_name": "Helios Grid & Solar Utilities (CapEx Energy)",
         "account_category": "business",
         "profile_type": "enterprise_capex_firm",
@@ -241,6 +269,7 @@ USER_PROFILES: List[Dict[str, Any]] = [
         "home_ip_prefix": "118.200.55.",
         "timezone_iana": "Asia/Singapore",
         "risk_threshold": 70,
+        "simulated_balance": 1250000.00,
     },
 ]
 
@@ -414,6 +443,8 @@ def seed_database(
             "incident_evidence",
             "incidents",
             "verification_requests",
+            "user_sessions",
+            "beneficiaries",
             "user_preferences",
             "beneficiary_events",
             "device_events",
@@ -431,22 +462,28 @@ def seed_database(
         device_seq = 1
         ben_event_seq = 1
         auth_seq = 1
+        customer_pw_hash = hash_password(DEMO_CUSTOMER_PASSWORD, salt_hex=_DETERMINISTIC_CUSTOMER_SALT)
+        admin_pw_hash = hash_password(DEMO_ADMIN_PASSWORD, salt_hex=_DETERMINISTIC_ADMIN_SALT)
 
         for u in USER_PROFILES:
             uid = u["user_id"]
             conn.execute(
                 """
                 INSERT INTO users (
-                    user_id, display_name, account_category, profile_type,
+                    user_id, username, password_hash, role, simulated_balance,
+                    display_name, account_category, profile_type,
                     industry_sector, expenditure_model, net_worth_band,
                     estimated_net_worth, declared_monthly_turnover,
                     typical_tx_amount, typical_max_tx_amount,
                     expected_monthly_tx_count, operating_hours_utc,
-                    home_geo_location, created_at_utc
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    home_geo_location, home_ip_prefix, created_at_utc
+                ) VALUES (?, ?, ?, 'customer', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     uid,
+                    u["username"],
+                    customer_pw_hash,
+                    float(u["simulated_balance"]),
                     u["display_name"],
                     u["account_category"],
                     u["profile_type"],
@@ -460,6 +497,7 @@ def seed_database(
                     u["expected_monthly_tx_count"],
                     u["operating_hours_utc"],
                     u["home_geo_location"],
+                    u["home_ip_prefix"],
                     _fmt_utc(base_created),
                 ),
             )
@@ -516,6 +554,28 @@ def seed_database(
                 ben_tuple = _default_vendor_for_user(u, b_idx)
                 user_known_bens[uid].append(ben_tuple)
                 ben_id, ben_name, ben_cat, ben_ind = ben_tuple
+                ben_created = _fmt_utc(base_created + timedelta(days=b_idx))
+                acct_ref = f"SIM-ACCT-{uid_num}-0{b_idx}99"
+                conn.execute(
+                    """
+                    INSERT INTO beneficiaries (
+                        beneficiary_id, user_id, display_name, account_reference,
+                        beneficiary_category, beneficiary_industry, status,
+                        created_at_utc, updated_at_utc, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+                    """,
+                    (
+                        ben_id,
+                        uid,
+                        ben_name,
+                        acct_ref,
+                        ben_cat,
+                        ben_ind,
+                        ben_created,
+                        ben_created,
+                        "Baseline verified counterparty added during onboarding.",
+                    ),
+                )
                 conn.execute(
                     """
                     INSERT INTO beneficiary_events (
@@ -531,12 +591,36 @@ def seed_database(
                         ben_name,
                         ben_cat,
                         ben_ind,
-                        _fmt_utc(base_created + timedelta(days=b_idx)),
+                        ben_created,
                         "beneficiary_added",
                         "Baseline verified counterparty added during onboarding.",
                     ),
                 )
                 ben_event_seq += 1
+
+        # 1b. Insert Demo SOC Admin Account (ADMIN-001)
+        conn.execute(
+            """
+            INSERT INTO users (
+                user_id, username, password_hash, role, simulated_balance,
+                display_name, account_category, profile_type,
+                industry_sector, expenditure_model, net_worth_band,
+                estimated_net_worth, declared_monthly_turnover,
+                typical_tx_amount, typical_max_tx_amount,
+                expected_monthly_tx_count, operating_hours_utc,
+                home_geo_location, home_ip_prefix, created_at_utc
+            ) VALUES (?, ?, ?, 'admin', 0.0, ?, 'individual', 'salaried_individual',
+                      'security_operations', 'personal_consumption', '$25K-$100K',
+                      50000.0, 4000.0, 100.0, 1000.0, 10, '00:00-23:59', 'IN-Mumbai', '103.21.244.', ?)
+            """,
+            (
+                "ADMIN-001",
+                "admin",
+                admin_pw_hash,
+                "TRACE-Fin SOC Lead Investigator (Admin)",
+                _fmt_utc(base_created),
+            ),
+        )
 
         # 2. Insert Simulated Threat-Intelligence Feed
         for ti in DEMO_THREAT_INDICATORS:
@@ -1085,13 +1169,13 @@ def seed_database(
 
 
 def get_database_summary(db_path: Optional[Path] = None) -> Dict[str, int]:
-    """Return row counts for all TRACE-Fin tables."""
+    """Return row counts for all TRACE-Fin tables (`users` counts customer accounts)."""
     tables = [
-        "users",
         "transactions",
         "authentication_events",
         "device_events",
         "beneficiary_events",
+        "beneficiaries",
         "threat_intelligence",
         "user_preferences",
         "verification_requests",
@@ -1100,6 +1184,10 @@ def get_database_summary(db_path: Optional[Path] = None) -> Dict[str, int]:
     ]
     counts: Dict[str, int] = {}
     with get_connection(db_path) as conn:
+        user_row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM users WHERE COALESCE(role, 'customer') = 'customer';"
+        ).fetchone()
+        counts["users"] = int(user_row["cnt"])
         for t in tables:
             row = conn.execute(f"SELECT COUNT(*) AS cnt FROM {t};").fetchone()
             counts[t] = int(row["cnt"])
@@ -1275,6 +1363,18 @@ def seed_initial_demo_incidents(db_path: Optional[Path] = None) -> None:
             VerificationRequestCreateSchema(transaction_id=capex_tx["transaction_id"]),
             db_path=target,
         )
+        with get_connection(target) as conn:
+            conn.execute(
+                """
+                UPDATE transactions
+                SET status = 'PENDING_VERIFICATION',
+                    balance_deducted = 0,
+                    decision_reason = 'Held pending customer or SOC verification review.'
+                WHERE transaction_id = ?;
+                """,
+                (capex_tx["transaction_id"],),
+            )
+            conn.commit()
 
 
 def main() -> None:

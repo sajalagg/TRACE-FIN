@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.api.deps import get_optional_auth_context
 from app.schemas.api_schemas import (
     IncidentDetailResponseSchema,
     IncidentStatusUpdateSchema,
     IncidentSummarySchema,
+    LoginSessionSchema,
+    UserProfileSchema,
 )
 from app.services.incidents import (
     get_incident_detail,
@@ -55,8 +58,16 @@ def get_incident_detail_endpoint(
 def update_incident_status_endpoint(
     incident_id: str,
     payload: IncidentStatusUpdateSchema,
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
 ) -> IncidentDetailResponseSchema:
     """Update an incident's lifecycle status ('open', 'investigating', 'closed') and optional audit note."""
+    if auth_ctx is not None:
+        current_user, _ = auth_ctx
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only an administrator can modify forensic incident status.",
+            )
     updated = update_incident_status(incident_id=incident_id, payload=payload)
     if updated is None:
         raise HTTPException(

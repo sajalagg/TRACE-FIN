@@ -28,8 +28,7 @@ render_demo_banner()
 st.markdown("<h1>Threat Intelligence Registry &amp; Freshness Gating</h1>", unsafe_allow_html=True)
 st.markdown(
     '<p style="color:#8A9CB0;font-size:0.85rem;margin-bottom:16px">'
-    'Synthetic threat-intelligence feed stored in the <code>threat_intelligence</code> SQLite table. '
-    'Enforces strict indicator freshness validation: <b>ACTIVE</b> indicators boost Method 3 scores '
+    'Synthetic threat-intelligence feed with indicator freshness validation: <b>ACTIVE</b> indicators boost Method 3 scores '
     '(+35 High / +20 Medium / +10 Low), while <b>EXPIRED</b> indicators contribute <b style="color:#F59E0B">0 points</b> '
     'and log a stale-indicator audit notice.</p>',
     unsafe_allow_html=True,
@@ -82,16 +81,16 @@ high_conf = sum(1 for i in indicators if i["confidence"] == "High" and i["status
 matched_tx_cnt = sum(len(i.get("associated_tx_ids", [])) for i in indicators)
 
 kc1, kc2, kc3, kc4 = st.columns(4)
-kc1.metric("Total SQLite Indicators", len(indicators))
+kc1.metric("Total Threat Indicators", len(indicators))
 kc2.metric("Active Fresh Indicators", active_count)
 kc3.metric("Expired Indicators (0 Pts)", expired_count)
-kc4.metric("Matched Transactions in DB", matched_tx_cnt)
+kc4.metric("Matched Transactions", matched_tx_cnt)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Indicator Table ────────────────────────────────────────────────────────
 st.markdown(
-    '<div class="panel-header">SQLITE THREAT INTELLIGENCE INDICATOR REGISTRY</div>',
+    '<div class="panel-header">THREAT INTELLIGENCE INDICATOR REGISTRY</div>',
     unsafe_allow_html=True,
 )
 
@@ -237,7 +236,7 @@ if all_ids:
                 )
 
             assoc_txs = sel_ind.get("associated_tx_ids", [])
-            st.markdown(f"**Associated SQLite Transactions ({len(assoc_txs)} matches)**")
+            st.markdown(f"**Associated Transactions ({len(assoc_txs)} matches)**")
             if assoc_txs:
                 sel_assoc_tx = st.selectbox(
                     "Select a matched transaction to inspect in Risk Analysis Lab",

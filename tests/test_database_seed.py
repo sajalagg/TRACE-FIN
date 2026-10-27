@@ -6,7 +6,19 @@ from pathlib import Path
 import pytest
 
 from app.core.database import get_connection, init_db
-from scripts.seed_demo_data import seed_database
+from app.core.policy import (
+    TX_STATUS_COMPLETED,
+    TX_STATUS_HELD_HIGH_RISK,
+    TX_STATUS_PENDING_VERIFICATION,
+    evaluate_transfer_policy,
+)
+from app.core.security import hash_password, verify_password
+from scripts.seed_demo_data import (
+    DEMO_ADMIN_PASSWORD,
+    DEMO_CUSTOMER_PASSWORD,
+    seed_database,
+    seed_initial_demo_incidents,
+)
 
 
 def test_schema_and_foreign_key_enforcement(tmp_path: Path) -> None:
@@ -115,3 +127,66 @@ def test_user_profiles_and_scenario_archetypes_present(tmp_path: Path) -> None:
             (bec_tx["user_id"], bec_tx["beneficiary_id"], bec_tx["timestamp_utc"]),
         ).fetchone()
         assert bec_event is not None
+
+
+def test_stage2_policy_password_hashing_and_seeded_entities(tmp_path: Path) -> None:
+    """Verify Stage 2 central transfer policy, password hashing, balances, beneficiaries, and admin account."""
+    # 1. Password hashing & verification (PBKDF2-HMAC-SHA256)
+    digest = hash_password("MySecretPass#2026")
+    assert "MySecretPass#2026" not in digest
+    assert digest.startswith("pbkdf2_sha256$")
+    assert verify_password("MySecretPass#2026", digest) is True
+    assert verify_password("WrongPassword", digest) is False
+
+    # 2. Central transfer policy bands
+    low_decision = evaluate_transfer_policy(risk_score=18, user_alert_threshold=55)
+    assert low_decision.resulting_status == TX_STATUS_COMPLETED
+    assert low_decision.deduct_balance_immediately is True
+    assert low_decision.requires_user_verification is False
+    assert low_decision.requires_admin_release is False
+
+    med_decision = evaluate_transfer_policy(risk_score=58, user_alert_threshold=55, high_risk_hold_threshold=75)
+    assert med_decision.resulting_status == TX_STATUS_PENDING_VERIFICATION
+    assert med_decision.deduct_balance_immediately is False
+    assert med_decision.requires_user_verification is True
+    assert med_decision.requires_admin_release is False
+
+    high_decision = evaluate_transfer_policy(risk_score=84, user_alert_threshold=55, high_risk_hold_threshold=75)
+    assert high_decision.resulting_status == TX_STATUS_HELD_HIGH_RISK
+    assert high_decision.deduct_balance_immediately is False
+    assert high_decision.requires_user_verification is True
+    assert high_decision.requires_admin_release is True
+
+    # 3. Seeded customer balances, admin account, beneficiaries, and transaction statuses
+    db_file = tmp_path / "test_stage2.db"
+    summary = seed_database(db_path=db_file, total_transactions=500, seed=42)
+    seed_initial_demo_incidents(db_path=db_file)
+    assert summary["beneficiaries"] == 36
+
+    with get_connection(db_file) as conn:
+        admin_row = conn.execute(
+            "SELECT user_id, username, password_hash, role FROM users WHERE user_id = 'ADMIN-001';"
+        ).fetchone()
+        assert admin_row is not None
+        assert admin_row["username"] == "admin"
+        assert admin_row["role"] == "admin"
+        assert verify_password(DEMO_ADMIN_PASSWORD, admin_row["password_hash"]) is True
+
+        cust_row = conn.execute(
+            "SELECT user_id, username, password_hash, role, simulated_balance FROM users WHERE user_id = 'USR-001';"
+        ).fetchone()
+        assert cust_row is not None
+        assert cust_row["username"] == "aarav.sharma"
+        assert cust_row["role"] == "customer"
+        assert float(cust_row["simulated_balance"]) == 3250.00
+        assert verify_password(DEMO_CUSTOMER_PASSWORD, cust_row["password_hash"]) is True
+
+        blocked_cnt = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM transactions WHERE status = 'BLOCKED' AND balance_deducted = 0;"
+        ).fetchone()["cnt"]
+        pending_cnt = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM transactions WHERE status = 'PENDING_VERIFICATION' AND balance_deducted = 0;"
+        ).fetchone()["cnt"]
+        assert blocked_cnt == 3
+        assert pending_cnt == 1
+

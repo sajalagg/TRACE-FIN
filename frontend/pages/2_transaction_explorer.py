@@ -334,9 +334,9 @@ if tx_ids:
         df_export = pd.DataFrame(filtered_txs)
         csv_data = df_export.to_csv(index=False)
         st.download_button(
-            label="⬇ Download Filtered SQLite Transactions (CSV)",
+            label="⬇ Download Filtered Transactions (CSV)",
             data=csv_data,
-            file_name="tracefin_sqlite_transactions.csv",
+            file_name="tracefin_transactions.csv",
             mime="text/csv",
             key="tx_csv_download",
         )
