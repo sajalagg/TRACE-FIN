@@ -1187,6 +1187,96 @@ def print_inspection_report(db_path: Optional[Path] = None) -> None:
     print("=" * 72)
 
 
+def seed_initial_demo_incidents(db_path: Optional[Path] = None) -> None:
+    """Create 3 realistic initial verification requests and SHA-256 incidents for the live UI demo."""
+    from app.schemas.api_schemas import (
+        IncidentStatusUpdateSchema,
+        VerificationRequestCreateSchema,
+        VerificationRespondSchema,
+    )
+    from app.services.incidents import update_incident_status
+    from app.services.verification import (
+        create_verification_request,
+        respond_to_verification_request,
+    )
+
+    target = db_path or get_db_path()
+    with get_connection(target) as conn:
+        ato_tx = conn.execute(
+            "SELECT transaction_id FROM transactions WHERE scenario_label = 'low_and_slow_ato' ORDER BY transaction_id ASC LIMIT 1;"
+        ).fetchone()
+        bec_tx = conn.execute(
+            "SELECT transaction_id FROM transactions WHERE scenario_label = 'b2b_vendor_bec_tamper' ORDER BY transaction_id ASC LIMIT 1;"
+        ).fetchone()
+        struc_tx = conn.execute(
+            "SELECT transaction_id FROM transactions WHERE scenario_label = 'structured_smurfing_drain' ORDER BY transaction_id ASC LIMIT 1;"
+        ).fetchone()
+        capex_tx = conn.execute(
+            "SELECT transaction_id FROM transactions WHERE scenario_label = 'legitimate_capex_high_value' ORDER BY transaction_id ASC LIMIT 1;"
+        ).fetchone()
+
+    if ato_tx:
+        v1 = create_verification_request(
+            VerificationRequestCreateSchema(transaction_id=ato_tx["transaction_id"]),
+            db_path=target,
+        )
+        if v1:
+            respond_to_verification_request(
+                request_id=v1.request_id,
+                payload=VerificationRespondSchema(
+                    user_response="denied",
+                    response_notes="Account holder confirmed they were in Mumbai and did not authorize foreign login or peer transfer.",
+                ),
+                db_path=target,
+            )
+
+    if bec_tx:
+        v2 = create_verification_request(
+            VerificationRequestCreateSchema(transaction_id=bec_tx["transaction_id"]),
+            db_path=target,
+        )
+        if v2:
+            r2 = respond_to_verification_request(
+                request_id=v2.request_id,
+                payload=VerificationRespondSchema(
+                    user_response="denied",
+                    response_notes="CFO confirmed supplier IBAN modification email was spoofed (Vendor BEC attack).",
+                ),
+                db_path=target,
+            )
+            if r2 and r2.linked_incident_id:
+                update_incident_status(
+                    incident_id=r2.linked_incident_id,
+                    payload=IncidentStatusUpdateSchema(
+                        status="investigating",
+                        investigator_note="Vendor bank account change froze pending out-of-band callback to supplier treasury.",
+                    ),
+                    db_path=target,
+                )
+
+    if struc_tx:
+        v3 = create_verification_request(
+            VerificationRequestCreateSchema(transaction_id=struc_tx["transaction_id"]),
+            db_path=target,
+        )
+        if v3:
+            respond_to_verification_request(
+                request_id=v3.request_id,
+                payload=VerificationRespondSchema(
+                    user_response="denied",
+                    response_notes="Unrecognized rapid burst of split transfers draining operating turnover.",
+                ),
+                db_path=target,
+            )
+
+    if capex_tx:
+        # Leave one pending verification request for live triage demonstration
+        create_verification_request(
+            VerificationRequestCreateSchema(transaction_id=capex_tx["transaction_id"]),
+            db_path=target,
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed or inspect the TRACE-Fin synthetic SQLite database.")
     parser.add_argument(
@@ -1210,6 +1300,7 @@ def main() -> None:
 
     if not args.inspect_only:
         seed_database(total_transactions=args.count, seed=args.seed)
+        seed_initial_demo_incidents()
     print_inspection_report()
 
 

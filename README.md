@@ -57,14 +57,22 @@ python -m scripts.seed_demo_data
 # 3. Run the reproducible evaluation and export paper tables (JSON + CSV)
 python -m scripts.run_evaluation
 
-# 4. Run the full automated test suite (33 tests)
+# 4. Run the full automated test suite (35 tests)
 pytest -v
 
-# 5. Start the FastAPI backend (CORS enabled for frontend integration)
-uvicorn app.main:app --reload
+# 5. Start the FastAPI backend (Terminal 1)
+uvicorn app.main:app --reload --port 8000
+
+# 6. Launch the Executive Streamlit SOC Frontend (Terminal 2)
+streamlit run frontend/app.py
 ```
 
-Once running, test the health endpoint at `http://127.0.0.1:8000/health` or open interactive Swagger docs at `http://127.0.0.1:8000/docs`. See [API_GUIDE.md](API_GUIDE.md) for the complete frontend integration endpoint table and JSON schemas.
+Once running:
+- **Streamlit Executive SOC Dashboard:** `http://localhost:8501`
+- **FastAPI Interactive Swagger Docs:** `http://127.0.0.1:8000/docs`
+- **Health Check:** `http://127.0.0.1:8000/health`
+
+See [API_GUIDE.md](API_GUIDE.md) for the complete frontend integration endpoint table and JSON schemas.
 
 ---
 
