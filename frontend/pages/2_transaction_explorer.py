@@ -254,12 +254,12 @@ if tx_ids:
         d1, d2, d3 = st.columns(3, gap="large")
 
         with d1:
-            st.markdown('<div class="panel-header">TELEMETRY &amp; ROUTING</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-header">LOGIN &amp; DEVICE ACTIVITY</div>', unsafe_allow_html=True)
             fields = {
                 "Transaction ID": tx["id"],
                 "Timestamp (UTC)": fmt_ts(tx["timestamp"]),
                 "Amount": fmt_currency(tx["amount"], tx.get("currency", "INR")),
-                "Scenario Archetype": tx.get("scenario_label", "—"),
+                "Detection Pattern": tx.get("scenario_label", "—"),
                 "Origin Device ID": tx.get("device_id", "—"),
                 "Origin IP Address": tx.get("ip_address", "—"),
                 "Origin Geo-Location": tx.get("geo_location", "—"),

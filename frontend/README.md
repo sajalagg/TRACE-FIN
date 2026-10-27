@@ -23,13 +23,12 @@ frontend/
 ├── ui/
 │   └── components.py                        # Reusable cards, financial calibration banner, kill-chain ribbon, Plotly charts
 └── pages/
-    ├── 1_overview_dashboard.py              # Live SQLite KPIs, telemetry chart, alert queue, 8 scenario archetypes
-    ├── 2_transaction_explorer.py            # Search, Expenditure-Model filter, Financial Calibration Card, CSV export
+    ├── 1_overview_dashboard.py              # Live SQLite KPIs, activity chart, Needs Your Attention queue
+    ├── 2_transaction_explorer.py            # Search, Expense-Type filter, Financial Calibration Card, CSV export
     ├── 3_risk_analysis_lab.py               # 3-Method comparison, rule matrix, waterfall, counterfactuals, Alert Policy Simulator
     ├── 4_forensic_investigation.py          # Kill-Chain progress ribbon, timeline for all 500+ txs, live verification & SHA-256 incident creation
     ├── 5_threat_intelligence.py             # SQLite TI registry, freshness gating (active vs expired=0 pts), linked transactions
-    ├── 6_incident_register_evaluation.py    # Persistent SQLite Incident Register, SHA-256 tamper verification, Stage 10 Evaluation
-    └── 7_live_demo_studio.py                # Live Demo Studio: Create User (POST /users), Beneficiary (POST /beneficiaries), & Transaction (POST /transactions)
+    └── 6_incident_register_evaluation.py    # Persistent SQLite Incident Register, SHA-256 tamper verification, Stage 10 Evaluation
 ```
 
 ---

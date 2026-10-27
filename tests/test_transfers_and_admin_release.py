@@ -311,3 +311,64 @@ def test_high_risk_transfer_held_and_completed_or_blocked_by_admin_in_lab(
     assert blk_data["linked_incident_id"] is not None
     assert blk_data["linked_incident_id"].startswith("INC-")
     assert round(float(blk_data["user_profile"]["simulated_balance"]), 2) == round(bal_after_tx1, 2)
+
+
+def test_customer_denial_immediately_blocks_without_going_to_admin(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When a customer denies an alert (Medium or High risk), it blocks immediately and clears requires_admin_release."""
+    client = _build_seeded_client(tmp_path, monkeypatch)
+
+    cust_login = client.post(
+        "/auth/login",
+        json={"username": "USR-002", "password": DEMO_CUSTOMER_PASSWORD},
+    ).json()
+    cust_token = cust_login["session_token"]
+    bal_before = float(client.get("/users/USR-002").json()["simulated_balance"])
+
+    tx_resp = client.post(
+        "/transactions",
+        headers={"Authorization": f"Bearer {cust_token}"},
+        json={
+            "user_id": "USR-002",
+            "amount": 750.0,
+            "beneficiary_id": "BEN-DENY-01",
+            "beneficiary_name": "Unauthorized Recipient",
+            "beneficiary_category": "personal_peer",
+            "beneficiary_industry": "digital_assets_brokerage",
+            "ip_address": "198.51.100.201",
+            "geo_location": "NL-Amsterdam",
+            "timestamp_utc": "2026-03-23T04:00:00Z",
+            "simulate_failed_logins": 3,
+            "simulate_unseen_device": True,
+            "simulate_rapid_new_beneficiary": True,
+        },
+    )
+    assert tx_resp.status_code == 200
+    tx_id = tx_resp.json()["transaction"]["transaction_id"]
+
+    ver_list = client.get("/verification-requests", params={"user_id": "USR-002"}).json()
+    ver_item = [v for v in ver_list if v["transaction_id"] == tx_id][0]
+    assert ver_item["requires_admin_release"] is True
+
+    # Customer clicks "I did not make this transaction" ('denied')
+    deny_resp = client.post(
+        f"/verification-requests/{ver_item['request_id']}/respond",
+        headers={"Authorization": f"Bearer {cust_token}"},
+        json={"user_response": "denied", "response_notes": "I did not authorize this transfer."},
+    )
+    assert deny_resp.status_code == 200
+    deny_data = deny_resp.json()
+    assert deny_data["status"] == "denied_suspicious"
+    assert deny_data["requires_admin_release"] is False
+
+    # Transaction is immediately BLOCKED with 'Thank you for your response — the transaction is blocked'
+    tx_detail = client.get(f"/transactions/{tx_id}").json()["transaction"]
+    assert tx_detail["status"] == "BLOCKED"
+    assert tx_detail["balance_deducted"] is False
+    assert "Thank you for your response — the transaction is blocked" in tx_detail["decision_reason"]
+
+    # Customer's balance is untouched
+    bal_after = float(client.get("/users/USR-002").json()["simulated_balance"])
+    assert round(bal_after, 2) == round(bal_before, 2)
+

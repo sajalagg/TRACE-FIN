@@ -17,9 +17,7 @@ from services.data_provider import (
     invalidate_dataset_cache,
     update_user_preferences_live,
 )
-from ui.components import fmt_currency, render_demo_banner
-
-render_demo_banner()
+from ui.components import fmt_currency
 
 auth_user = st.session_state.get("auth_user") or {}
 uid = auth_user.get("user_id", "USR-001")
@@ -33,7 +31,7 @@ prefs = get_user_preferences_live(uid) or {
     "quiet_hours_end": "07:00",
 }
 
-st.markdown("# ⚙️ Profile, Alert Preferences & Settings")
+st.markdown("# Profile, Alert Preferences & Settings")
 st.markdown(
     '<div style="color:#8A9CB0;font-size:0.85rem;margin-top:-10px;margin-bottom:18px">'
     'Review your registered account baseline, customize your security alert preferences, '
@@ -74,14 +72,6 @@ with col_prefs:
         help="Transfers scoring at or above this threshold trigger a security notification.",
         key="cust_pref_thr",
     )
-    new_crit = st.slider(
-        "Critical Quiet-Hours Bypass Threshold (50–100)",
-        min_value=50,
-        max_value=100,
-        value=int(prefs.get("critical_bypass_threshold", 85)),
-        help="Critical alerts at or above this score notify you immediately even during quiet hours.",
-        key="cust_pref_crit",
-    )
     tz_options = [
         "Asia/Kolkata",
         "Asia/Singapore",
@@ -111,7 +101,7 @@ with col_prefs:
             uid,
             {
                 "risk_threshold": int(new_thr),
-                "critical_bypass_threshold": int(new_crit),
+                "critical_bypass_threshold": int(prefs.get("critical_bypass_threshold", 85)),
                 "timezone_iana": new_tz,
                 "quiet_hours_enabled": bool(qh_enabled),
                 "quiet_hours_start": qh_start.strip(),
