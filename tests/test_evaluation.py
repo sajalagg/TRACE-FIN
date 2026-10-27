@@ -87,3 +87,25 @@ def test_cli_evaluation_exporter(
     assert paths["csv"].exists()
     csv_lines = paths["csv"].read_text(encoding="utf-8").strip().splitlines()
     assert len(csv_lines) == 4  # header + 3 scoring methods
+
+
+def test_dashboard_dataset_and_threat_intel_endpoints(
+    seeded_env: tuple[TestClient, Path],
+) -> None:
+    """Verify GET /dashboard/dataset and GET /threat-intel return live enriched SQLite data."""
+    client, _ = seeded_env
+    ds_res = client.get("/dashboard/dataset")
+    assert ds_res.status_code == 200
+    ds = ds_res.json()
+    assert ds["metrics"]["total_transactions"] == 500
+    assert len(ds["transactions"]) == 500
+    assert len(ds["scenarios"]) == 8
+    assert len(ds["activity_chart"]) > 0
+
+    ti_res = client.get("/threat-intel")
+    assert ti_res.status_code == 200
+    ti_list = ti_res.json()
+    assert len(ti_list) == 5
+    assert any(i["status"] == "ACTIVE" and i["score_impact"] == 35 for i in ti_list)
+    assert any(i["status"] == "EXPIRED" and i["score_impact"] == 0 for i in ti_list)
+
