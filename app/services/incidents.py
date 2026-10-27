@@ -297,6 +297,9 @@ def get_incident_detail(
                    t.beneficiary_category, t.beneficiary_industry,
                    t.timestamp_utc AS tx_timestamp_utc,
                    t.device_id, t.ip_address, t.geo_location,
+                   t.status AS tx_status, t.decision_reason AS tx_decision_reason,
+                   t.notes AS tx_notes, t.balance_deducted AS tx_balance_deducted,
+                   u.username, u.role AS user_role, u.simulated_balance,
                    u.display_name, u.account_category, u.profile_type,
                    u.industry_sector, u.expenditure_model, u.net_worth_band,
                    u.estimated_net_worth, u.declared_monthly_turnover,
@@ -375,10 +378,17 @@ def get_incident_detail(
         device_id=inc_row["device_id"],
         ip_address=inc_row["ip_address"],
         geo_location=inc_row["geo_location"],
+        status=inc_row["tx_status"] or "COMPLETED",
+        decision_reason=inc_row["tx_decision_reason"] or "Approved under baseline simulation policy.",
+        notes=inc_row["tx_notes"],
+        balance_deducted=bool(inc_row["tx_balance_deducted"]),
     )
 
     user_profile = UserProfileSchema(
         user_id=inc_row["user_id"],
+        username=inc_row["username"],
+        role=inc_row["user_role"] or "customer",
+        simulated_balance=float(inc_row["simulated_balance"]),
         display_name=inc_row["display_name"],
         account_category=inc_row["account_category"],
         profile_type=inc_row["profile_type"],
@@ -397,6 +407,7 @@ def get_incident_detail(
 
     ver_schema = None
     if ver_row is not None:
+        v_keys = ver_row.keys()
         ver_schema = VerificationRequestSchema(
             request_id=ver_row["request_id"],
             transaction_id=tx_id,
@@ -411,6 +422,11 @@ def get_incident_detail(
             responded_at_utc=ver_row["responded_at_utc"],
             user_response=ver_row["user_response"],
             response_notes=ver_row["response_notes"],
+            requires_admin_release=bool(ver_row["requires_admin_release"]) if "requires_admin_release" in v_keys else False,
+            admin_decision=ver_row["admin_decision"] if "admin_decision" in v_keys else None,
+            admin_id=ver_row["admin_id"] if "admin_id" in v_keys else None,
+            admin_notes=ver_row["admin_notes"] if "admin_notes" in v_keys else None,
+            admin_decided_at_utc=ver_row["admin_decided_at_utc"] if "admin_decided_at_utc" in v_keys else None,
             linked_incident_id=incident_id,
             created_new=False,
         )

@@ -9,6 +9,13 @@ class UserProfileSchema(BaseModel):
     """Schema representing a synthetic user's financial and business profile."""
 
     user_id: str
+    username: Optional[str] = None
+    role: str = Field(default="customer", description="'customer' or 'admin'")
+    simulated_balance: float = Field(
+        default=10000.0,
+        ge=0,
+        description="Simulated account balance (synthetic funds only; no real money).",
+    )
     display_name: str
     account_category: str = Field(description="'individual' or 'business'")
     profile_type: str = Field(
@@ -26,6 +33,10 @@ class UserProfileSchema(BaseModel):
     expected_monthly_tx_count: int
     operating_hours_utc: str
     home_geo_location: str
+    home_ip_prefix: str = Field(
+        default="103.21.244.",
+        description="Baseline home IP prefix registered for the user's primary network.",
+    )
     created_at_utc: str
 
 
@@ -35,6 +46,19 @@ class UserCreateSchema(BaseModel):
     user_id: Optional[str] = Field(
         default=None,
         description="Optional custom ID (e.g., 'USR-013'). Auto-generated if omitted.",
+    )
+    username: Optional[str] = Field(
+        default=None,
+        description="Optional login username for demo authentication.",
+    )
+    password: Optional[str] = Field(
+        default=None,
+        description="Optional password (hashed with PBKDF2-HMAC-SHA256 before storage).",
+    )
+    simulated_balance: float = Field(
+        default=25000.0,
+        ge=0,
+        description="Initial simulated balance in USD.",
     )
     display_name: str = Field(
         default="Live Demo Corp (OpEx Retail SME)",
@@ -146,6 +170,24 @@ class BeneficiaryEventSchema(BaseModel):
     notes: Optional[str] = None
 
 
+class BeneficiarySchema(BaseModel):
+    """Schema for a customer's saved beneficiary record in `beneficiaries`."""
+
+    beneficiary_id: str
+    user_id: str
+    display_name: str
+    account_reference: str = Field(
+        description="Synthetic account/IBAN reference (fake identifier for classroom simulation)."
+    )
+    beneficiary_category: str
+    beneficiary_industry: str
+    status: str = "active"
+    is_verified: bool = False
+    created_at_utc: str
+    updated_at_utc: str
+    notes: Optional[str] = None
+
+
 class TransactionSummarySchema(BaseModel):
     """Schema for a single transaction record enriched with sender summary fields."""
 
@@ -164,6 +206,17 @@ class TransactionSummarySchema(BaseModel):
     device_id: str
     ip_address: str
     geo_location: str
+    status: str = Field(
+        default="COMPLETED",
+        description="Persisted transaction state: 'COMPLETED', 'PENDING_VERIFICATION', 'HELD_HIGH_RISK', or 'BLOCKED'.",
+    )
+    decision_reason: str = Field(
+        default="Approved under baseline simulation policy.",
+        description="Plain-language explanation of the transfer policy outcome.",
+    )
+    notes: Optional[str] = None
+    balance_deducted: bool = True
+    session_id: Optional[str] = None
 
 
 class TransactionListResponseSchema(BaseModel):
@@ -418,15 +471,20 @@ class VerificationRequestSchema(BaseModel):
     beneficiary_id: str
     beneficiary_name: str
     status: str = Field(
-        description="'pending', 'confirmed_legitimate', or 'denied_suspicious'"
+        description="'pending', 'awaiting_admin_release', 'confirmed_legitimate', or 'denied_suspicious'"
     )
     created_at_utc: str
     responded_at_utc: Optional[str] = None
     user_response: Optional[str] = None
     response_notes: Optional[str] = None
+    requires_admin_release: bool = False
+    admin_decision: Optional[str] = None
+    admin_id: Optional[str] = None
+    admin_notes: Optional[str] = None
+    admin_decided_at_utc: Optional[str] = None
     linked_incident_id: Optional[str] = Field(
         default=None,
-        description="Populated when user_response == 'denied' and an incident is created/linked.",
+        description="Populated when user_response == 'denied' or admin blocks the transfer and an incident is created/linked.",
     )
     created_new: bool = Field(
         default=True,
@@ -699,6 +757,217 @@ class TransactionCreateResponseSchema(BaseModel):
     transaction: TransactionSummarySchema
     risk_comparison: RiskComparisonResponseSchema
     alert_policy_decision: AlertDecisionResponseSchema
+
+
+# ---------------------------------------------------------------------------
+# Stage 3: Demo Authentication, Registration & Session Network Intelligence
+# ---------------------------------------------------------------------------
+
+
+class AuthRegisterSchema(BaseModel):
+    """Request body for registering a new demo customer account (`POST /auth/register`)."""
+
+    username: str = Field(
+        min_length=3,
+        max_length=64,
+        description="Unique username for demo sign-in (e.g., 'priya.nair').",
+    )
+    password: str = Field(
+        min_length=6,
+        max_length=128,
+        description="Password hashed with PBKDF2-HMAC-SHA256 before storage.",
+    )
+    display_name: str = Field(
+        min_length=2,
+        max_length=120,
+        description="Full name or business name displayed in the banking portal.",
+    )
+    account_category: str = Field(
+        default="individual",
+        pattern=r"^(individual|business)$",
+        description="'individual' or 'business'",
+    )
+    profile_type: str = Field(
+        default="salaried_individual",
+        description="e.g., 'student', 'salaried_individual', 'freelancer', 'sme_opex_merchant', 'enterprise_capex_firm', 'high_net_worth'",
+    )
+    industry_sector: str = Field(
+        default="personal_finance",
+        description="e.g., 'personal_finance', 'education', 'retail_ecommerce', 'saas_it_services', 'manufacturing_heavy_machinery'",
+    )
+    expenditure_model: str = Field(
+        default="personal_consumption",
+        pattern=r"^(opex_heavy|capex_heavy|personal_consumption)$",
+    )
+    net_worth_band: str = Field(default="$25K-$100K")
+    estimated_net_worth: float = Field(default=60000.0, gt=0)
+    declared_monthly_turnover: float = Field(default=4500.0, gt=0)
+    typical_tx_amount: float = Field(default=150.0, gt=0)
+    typical_max_tx_amount: float = Field(default=1200.0, gt=0)
+    expected_monthly_tx_count: int = Field(default=30, gt=0)
+    operating_hours_utc: str = Field(
+        default="04:00-18:00",
+        pattern=r"^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$",
+    )
+    home_geo_location: str = Field(
+        default="IN-Bengaluru",
+        description="Baseline home city/country selected during onboarding (e.g., 'IN-Bengaluru', 'IN-Mumbai', 'SG-Singapore').",
+    )
+    home_ip_address: str = Field(
+        default="106.51.72.15",
+        description="Baseline home IP address used to establish the account's trusted home network prefix.",
+    )
+    primary_device_label: str = Field(
+        default="Personal Laptop (Trusted)",
+        description="Label for the primary device registered at account creation.",
+    )
+    simulated_balance: float = Field(
+        default=25000.0,
+        ge=100.0,
+        description="Initial synthetic balance in USD (simulation only).",
+    )
+    risk_threshold: int = Field(default=60, ge=10, le=95)
+    timezone_iana: str = Field(default="Asia/Kolkata")
+
+
+class AuthLoginSchema(BaseModel):
+    """Request body for signing into a demo customer or admin account (`POST /auth/login`)."""
+
+    username: str = Field(
+        description="Username (e.g., 'aarav.sharma', 'admin') or User ID (e.g., 'USR-001', 'ADMIN-001')."
+    )
+    password: str = Field(description="Account password.")
+    ip_address: Optional[str] = Field(
+        default=None,
+        description="Simulated login IP address. Defaults to the user's home IP if omitted.",
+    )
+    geo_location: Optional[str] = Field(
+        default=None,
+        description="Simulated/inferred login location (e.g., 'IN-Mumbai', 'NL-Amsterdam'). Defaults to user's home location if omitted.",
+    )
+    device_id: Optional[str] = Field(
+        default=None,
+        description="Device ID for this login session. Defaults to the user's primary registered device if omitted.",
+    )
+    device_label: Optional[str] = Field(
+        default=None,
+        description="Human-readable label for the login device.",
+    )
+    network_type: str = Field(
+        default="home_broadband",
+        pattern=r"^(home_broadband|corporate_network|public_wifi|commercial_vpn|mobile_roaming|anonymizer_proxy)$",
+        description="Simulated network context for this login session.",
+    )
+    simulate_failed_attempts: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description="Optional demo helper: number of failed login attempts to record immediately before this login session.",
+    )
+
+
+class SessionObservedEvidenceSchema(BaseModel):
+    """System-observed telemetry for a login session."""
+
+    session_id: str
+    user_id: str
+    created_at_utc: str
+    expires_at_utc: str
+    failed_logins_1h: int
+    is_active: bool
+
+
+class SessionSimulatedInputSchema(BaseModel):
+    """Controlled demo network/device inputs selected at login."""
+
+    ip_address: str
+    network_type: str
+    device_id: str
+    device_label: str
+
+
+class SessionInferredContextSchema(BaseModel):
+    """Forensic context inferred by comparing session inputs against user baseline and threat intel."""
+
+    geo_location: str
+    home_geo_location: str
+    home_ip_prefix: str
+    is_known_ip: bool
+    is_known_device: bool
+    is_home_location: bool
+    active_threat_intel_match: bool
+    threat_intel_category: Optional[str] = None
+    context_summary: str
+
+
+class LoginSessionSchema(BaseModel):
+    """Complete login session record with explicit Observed / Simulated / Inferred provenance."""
+
+    session_id: str
+    user_id: str
+    role: str
+    ip_address: str
+    geo_location: str
+    device_id: str
+    device_label: str
+    network_type: str
+    is_known_ip: bool
+    is_known_device: bool
+    is_home_location: bool
+    failed_logins_1h: int
+    created_at_utc: str
+    expires_at_utc: str
+    is_revoked: bool
+    observed_evidence: SessionObservedEvidenceSchema
+    simulated_input: SessionSimulatedInputSchema
+    inferred_context: SessionInferredContextSchema
+
+
+class AuthTokenResponseSchema(BaseModel):
+    """Response returned on successful registration or login."""
+
+    session_token: str = Field(description="Bearer token for authenticating subsequent API requests.")
+    user: UserProfileSchema
+    session: LoginSessionSchema
+
+
+class NetworkPresetSchema(BaseModel):
+    """Pre-configured network/location preset for the Sign-In page selector."""
+
+    preset_id: str
+    label: str
+    description: str
+    ip_address: str
+    geo_location: str
+    device_id: str
+    device_label: str
+    network_type: str
+    simulate_failed_attempts: int = 0
+    expected_signal_note: str
+
+
+class AdminTransactionDecisionSchema(BaseModel):
+    """Request body for Admin investigation release or block in the Risk Analysis Lab (`POST /transactions/{transaction_id}/admin-decision`)."""
+
+    admin_decision: str = Field(
+        pattern=r"^(approve|block)$",
+        description="'approve' (confirm with account owner, release hold, and complete transfer) or 'block' (block transfer and open SHA-256 forensic incident).",
+    )
+    admin_notes: Optional[str] = Field(
+        default="Investigated in Risk Analysis Lab and confirmed with account owner.",
+        description="Investigator audit note explaining the release or block decision.",
+    )
+
+
+class AdminDecisionResponseSchema(BaseModel):
+    """Response returned after an Admin approves/releases or blocks a pending/held transaction."""
+
+    transaction: TransactionSummarySchema
+    user_profile: UserProfileSchema
+    verification_request: VerificationRequestSchema
+    linked_incident_id: Optional[str] = None
+
+
 
 
 

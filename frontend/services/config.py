@@ -13,8 +13,8 @@ API_TIMEOUT_SECONDS = float(os.getenv("TRACEFIN_API_TIMEOUT", "10.0"))
 
 # Application Metadata
 APP_NAME = "TRACE-Fin"
-APP_FULL_TITLE = "TRACE-Fin: Evidence-Aware Financial Transaction Verification"
+APP_FULL_TITLE = "TRACE-Fin Digital Banking & Forensic Risk Protection"
 APP_EXPANSION = "Transaction Risk Analysis, Correlation, and Escalation for Finance"
-APP_VERSION = "v1.0.0 · FastAPI + SQLite Forensics Engine"
-ENVIRONMENT_TAG = "SYNTHETIC RESEARCH PROTOTYPE · LIVE FASTAPI + SQLITE BACKEND"
+APP_VERSION = "v2.0 · Simulated Digital Banking & Risk Protection"
+ENVIRONMENT_TAG = "EDUCATIONAL SIMULATION · SYNTHETIC ACCOUNTS ONLY"
 DEFAULT_EVALUATION_SAMPLE_SIZE = 500

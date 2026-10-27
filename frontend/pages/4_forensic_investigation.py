@@ -39,8 +39,8 @@ st.markdown("<h1>Forensic Investigation &amp; Kill-Chain Reconstruction</h1>", u
 st.markdown(
     '<p style="color:#8A9CB0;font-size:0.85rem;margin-bottom:16px">'
     'Reconstruct the chronological attack lifecycle across authentication, device, beneficiary, threat-intelligence, '
-    'and transaction tables in SQLite. Explicitly separates <b>Recorded Database Telemetry</b> from '
-    '<b>System Forensic Inference</b>, and executes live verification &amp; SHA-256 incident escalation.</p>',
+    'and transaction telemetry. Explicitly separates <b>Recorded System Telemetry</b> from '
+    '<b>Forensic Inference</b>, and executes verification &amp; SHA-256 incident escalation.</p>',
     unsafe_allow_html=True,
 )
 st.divider()
@@ -212,13 +212,13 @@ st.divider()
 
 # ── Live Transaction Verification & SHA-256 Incident Creation ─────────────
 st.markdown(
-    '<div class="panel-header">LIVE TRANSACTION VERIFICATION &amp; INCIDENT ESCALATION (FASTAPI + SQLITE)</div>',
+    '<div class="panel-header">TRANSACTION VERIFICATION &amp; INCIDENT ESCALATION</div>',
     unsafe_allow_html=True,
 )
 st.markdown(
     '<p style="color:#8A9CB0;font-size:0.8rem;margin-bottom:14px">'
-    'Submit a verification response to <code>POST /verification-requests</code> &amp; <code>/respond</code>. '
-    'Confirming fraud or escalating automatically persists an immutable forensic incident in SQLite with a '
+    'Record a verification decision after reviewing the account telemetry and confirming with the account holder. '
+    'Confirming fraud or escalating automatically creates an immutable forensic incident with a '
     'canonical SHA-256 evidence snapshot hash.</p>',
     unsafe_allow_html=True,
 )
@@ -249,7 +249,7 @@ with vc2:
         st.markdown(
             f'<div style="padding:10px 14px;background:#082330;border:1px solid #21D4C255;'
             f'border-radius:7px;font-size:0.8rem;color:#67E8F9;margin-bottom:8px">'
-            f'ℹ️ <b>{len(existing_incidents)}</b> SQLite incident record(s) linked to <code>{selected_case}</code>:</div>',
+            f'ℹ️ <b>{len(existing_incidents)}</b> incident record(s) linked to <code>{selected_case}</code>:</div>',
             unsafe_allow_html=True,
         )
         for inc in existing_incidents:
@@ -260,12 +260,12 @@ with vc2:
                 unsafe_allow_html=True,
             )
 
-    if st.button("⚡ Execute Verification Decision in SQLite", key="submit_verification", type="primary", use_container_width=True):
+    if st.button("⚡ Submit Verification Decision", key="submit_verification", type="primary", use_container_width=True):
         result = verify_transaction(selected_case, outcome_choice, analyst_note)
         if result["success"]:
             inc = result.get("incident")
             if inc:
-                st.success(f"Incident **{inc['incident_id']}** persisted in SQLite! Open Incident Register to inspect.")
+                st.success(f"Incident **{inc['incident_id']}** created! Open Incident Register to inspect.")
                 st.markdown(
                     f'<div style="font-family:monospace;font-size:0.72rem;color:#8A9CB0;'
                     f'background:#070B10;padding:10px 12px;border-radius:6px;border:1px solid #223342;margin-top:8px">'
@@ -274,7 +274,7 @@ with vc2:
                     unsafe_allow_html=True,
                 )
             else:
-                st.success(f"Transaction **{selected_case}** marked as **Confirmed Legitimate** in SQLite (all forensic telemetry preserved).")
+                st.success(f"Transaction **{selected_case}** marked as **Confirmed Legitimate** (all forensic telemetry preserved).")
         else:
             st.warning(f"Verification response notice: {result.get('error')}")
 
@@ -291,7 +291,7 @@ if events and tx:
         f"Amount: {fmt_currency(tx['amount'])}",
         f"Scores: M1={tx.get('method1_score')} | M2={tx.get('method2_score')} | M3={tx.get('method3_score')}",
         "",
-        f"CHRONOLOGICAL EVIDENCE TIMELINE ({len(events)} SQLite records)",
+        f"CHRONOLOGICAL EVIDENCE TIMELINE ({len(events)} records)",
         "─" * 72,
     ]
     for ev in events:

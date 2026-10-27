@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api.deps import enforce_resource_ownership, get_optional_auth_context
 from app.schemas.api_schemas import (
     AlertDecisionResponseSchema,
+    LoginSessionSchema,
     UserPreferencesSchema,
     UserPreferencesUpdateSchema,
+    UserProfileSchema,
 )
 from app.services.alert_policy import (
     evaluate_alert_decision,
@@ -20,8 +23,12 @@ router = APIRouter(tags=["alert-preferences"])
 
 
 @router.get("/preferences/{user_id}", response_model=UserPreferencesSchema)
-def get_user_preferences_endpoint(user_id: str) -> UserPreferencesSchema:
+def get_user_preferences_endpoint(
+    user_id: str,
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
+) -> UserPreferencesSchema:
     """Retrieve stored alert policy preferences (threshold, timezone, quiet hours) for a user."""
+    enforce_resource_ownership(auth_ctx, user_id, resource_label="user preferences")
     prefs = get_user_preferences(user_id=user_id)
     if prefs is None:
         raise HTTPException(
@@ -35,8 +42,10 @@ def get_user_preferences_endpoint(user_id: str) -> UserPreferencesSchema:
 def update_user_preferences_endpoint(
     user_id: str,
     payload: UserPreferencesUpdateSchema,
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
 ) -> UserPreferencesSchema:
     """Update a user's alert threshold, critical bypass level, IANA timezone, or quiet hours."""
+    enforce_resource_ownership(auth_ctx, user_id, resource_label="user preferences")
     try:
         updated = update_user_preferences(user_id=user_id, payload=payload)
     except ValueError as exc:

@@ -366,9 +366,16 @@ def risk_badge_html(level: str) -> str:
 def status_badge_html(status: str) -> str:
     mapping = {
         "Settled": "badge-settled",
+        "COMPLETED": "badge-settled",
+        "Completed": "badge-settled",
         "Pending Review": "badge-pending",
+        "PENDING_VERIFICATION": "badge-pending",
+        "Pending Verification": "badge-pending",
         "Flagged": "badge-flagged",
+        "HELD_HIGH_RISK": "badge-flagged",
+        "Held (High Risk)": "badge-flagged",
         "Blocked": "badge-blocked",
+        "BLOCKED": "badge-blocked",
         "Open": "badge-flagged",
         "In Review": "badge-pending",
         "Escalated": "badge-blocked",
@@ -439,10 +446,69 @@ def render_demo_banner() -> None:
     st.markdown(
         '<div class="demo-banner">'
         '<div><span class="demo-dot"></span>'
-        '<b>SYNTHETIC RESEARCH PROTOTYPE</b> · Connected to Live FastAPI + SQLite Forensics Engine · '
-        'Heuristic scores (0–100) are not calibrated probabilities</div>'
-        '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:#21D4C2">SQLite: trace_fin.db</span>'
+        '<b>SIMULATED BANKING ENVIRONMENT</b> · All accounts, balances, and transfers are synthetic (no real money moves) · '
+        'Risk scores (0–100) are explainable rule-based indicators, not probabilities</div>'
+        '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:#21D4C2">TRACE-Fin Protection Active</span>'
         '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_two_line_customer_explainer(
+    tx_status: str,
+    risk_score: int,
+    reasons: Optional[List[str]] = None,
+) -> None:
+    """Render a concise 2-line plain-language explainer when a customer's transfer is rated Medium or Higher."""
+    if tx_status == "COMPLETED" and risk_score < 40:
+        return
+
+    reason_snippet = (
+        reasons[0]
+        if reasons
+        else "This transfer differed from your usual sign-in location, device, or beneficiary pattern."
+    )
+    if tx_status == "HELD_HIGH_RISK" or risk_score >= 75:
+        border_col = "#EF4444"
+        bg_col = "#2A1215"
+        line1 = (
+            f"⏸️ <b>Transfer Placed on High-Risk Security Hold (Score: {risk_score}/100)</b> — "
+            "Your simulated account balance has <b>not</b> been deducted."
+        )
+        line2 = (
+            f"🔍 <b>Why &amp; Next Step:</b> {reason_snippet} "
+            "Please confirm or deny this activity in <b>Security Alerts</b>; an administrator will also verify with you in the Risk Analysis Lab before releasing funds."
+        )
+    elif tx_status == "BLOCKED":
+        border_col = "#DC2626"
+        bg_col = "#3B0A0A"
+        line1 = (
+            f"🛑 <b>Transfer Blocked &amp; Protected (Score: {risk_score}/100)</b> — "
+            "Your simulated account balance was <b>not</b> deducted."
+        )
+        line2 = (
+            f"🔒 <b>Why &amp; Next Step:</b> {reason_snippet} "
+            "This transfer was denied and logged as a protected security incident."
+        )
+    else:
+        border_col = "#F59E0B"
+        bg_col = "#281D0A"
+        line1 = (
+            f"⚠️ <b>Additional Verification Needed (Score: {risk_score}/100)</b> — "
+            "Your simulated balance has <b>not</b> been deducted while this transfer awaits confirmation."
+        )
+        line2 = (
+            f"🛡️ <b>Why &amp; Next Step:</b> {reason_snippet} "
+            "Confirm that you authorized this transfer in <b>Security Alerts</b> (or via administrator review) to complete it."
+        )
+
+    st.markdown(
+        f"""
+<div style="background:{bg_col};border:1px solid {border_col};border-left:4px solid {border_col};
+border-radius:8px;padding:12px 16px;margin:10px 0;font-size:0.84rem;line-height:1.55;color:#F8FAFC">
+  <div>{line1}</div>
+  <div style="color:#CBD5E1;margin-top:4px">{line2}</div>
+</div>""",
         unsafe_allow_html=True,
     )
 
@@ -686,7 +752,7 @@ def build_activity_chart(data: List[Dict[str, Any]]) -> go.Figure:
         )
     )
 
-    layout = plotly_layout_defaults("Daily Transaction Volume (March 2026 SQLite Dataset)", height=310)
+    layout = plotly_layout_defaults("Daily Transaction Activity", height=310)
     layout["yaxis"]["title"] = "Transactions"
     layout["xaxis"]["title"] = "Date (UTC)"
     fig.update_layout(**layout)
@@ -868,7 +934,7 @@ SIDEBAR_LOGO_HTML = """
       <div style="font-size:1.08rem;font-weight:700;color:#F1F5F9;
                   letter-spacing:-0.02em;line-height:1.05">TRACE-Fin</div>
       <div style="font-size:0.62rem;color:#21D4C2;font-weight:600;
-                  letter-spacing:0.05em;line-height:1.35;text-transform:uppercase">DFIR &amp; FinTech SOC</div>
+                  letter-spacing:0.05em;line-height:1.35;text-transform:uppercase">Digital Banking &amp; Forensics</div>
     </div>
   </div>
 </div>

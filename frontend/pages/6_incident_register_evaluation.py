@@ -36,15 +36,15 @@ from ui.components import (
 inject_css()
 render_demo_banner()
 
-st.markdown("<h1>Incident Register &amp; Stage 10 Evaluation Dashboard</h1>", unsafe_allow_html=True)
+st.markdown("<h1>Incident Register &amp; Comparative Evaluation</h1>", unsafe_allow_html=True)
 st.markdown(
     '<p style="color:#8A9CB0;font-size:0.85rem;margin-bottom:16px">'
-    'Manage SQLite forensic incidents with real-time SHA-256 tamper-evident verification, '
+    'Manage forensic incidents with real-time SHA-256 tamper-evident verification, '
     'and inspect comparative Precision, Recall, F1, and False-Positive Rates across all three scoring methods.</p>',
     unsafe_allow_html=True,
 )
 
-tab_inc, tab_eval = st.tabs(["📋 SQLite Incident Register & SHA-256 Integrity", "📊 Stage 10 Comparative Evaluation"])
+tab_inc, tab_eval = st.tabs(["📋 Incident Register & SHA-256 Integrity", "📊 Comparative Evaluation"])
 
 # ══════════════════════════════════════════════════════════════════════════
 # TAB A: INCIDENT REGISTER
@@ -58,17 +58,17 @@ with tab_inc:
     closed_cnt = sum(1 for i in all_incidents if i["raw_status"] == "closed")
 
     ic1, ic2, ic3, ic4 = st.columns(4)
-    ic1.metric("Total SQLite Incidents", len(all_incidents))
+    ic1.metric("Total Incidents", len(all_incidents))
     ic2.metric("Open (Action Required)", open_cnt)
     ic3.metric("Investigating (In Review)", inv_cnt)
     ic4.metric("Closed / Resolved", closed_cnt)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    st.markdown('<div class="panel-header">PERSISTENT SQLITE INCIDENT REGISTER</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-header">FORENSIC INCIDENT REGISTER</div>', unsafe_allow_html=True)
 
     if not all_incidents:
-        st.info("No incidents currently in SQLite. Use Forensic Investigation to deny a verification request and generate an incident.")
+        st.info("No incidents currently recorded. Use Forensic Investigation to deny a verification request and generate an incident.")
     else:
         html_rows = ""
         for inc in all_incidents:
@@ -185,7 +185,7 @@ with tab_inc:
                     )
 
                 st.markdown("<hr>", unsafe_allow_html=True)
-                st.markdown("**Update Incident Status in SQLite (`PATCH /incidents/{id}`)**")
+                st.markdown("**Update Incident Status**")
                 status_opts = ["open", "investigating", "closed"]
                 curr_raw = sel_inc.get("raw_status", "open")
                 new_status = st.selectbox(
@@ -199,7 +199,7 @@ with tab_inc:
                 if st.button("💾 Update Incident Status", use_container_width=True, key="patch_inc_btn"):
                     res = update_incident_status_live(sel_inc["incident_id"], new_status, inv_note)
                     if res["ok"]:
-                        st.success(f"Updated {sel_inc['incident_id']} to '{new_status}' in SQLite!")
+                        st.success(f"Updated {sel_inc['incident_id']} to '{new_status}'!")
                         st.rerun()
                     else:
                         st.error(res.get("error", "Failed to update incident."))
@@ -229,7 +229,7 @@ border-radius:8px;margin-bottom:14px">
                     unsafe_allow_html=True,
                 )
 
-                st.markdown("**Linked SQLite Evidence Records (`incident_evidence` table)**")
+                st.markdown("**Linked Evidence Records**")
                 for ev in sel_inc.get("linked_evidence", []):
                     st.markdown(
                         f'<div style="padding:6px 10px;border-bottom:1px solid #1E2D3B;font-size:0.75rem">'
@@ -273,7 +273,7 @@ with tab_eval:
     )
 
     if not eval_data:
-        st.error("Failed to load evaluation metrics from FastAPI.")
+        st.error("Failed to load evaluation metrics.")
         st.stop()
 
     st.info(f"**Academic Evaluation Note:** {eval_data.get('note', '')}", icon="📘")

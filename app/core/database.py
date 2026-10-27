@@ -19,8 +19,52 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     return conn
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    """Add `column` to `table` if the table exists and does not yet have `column`."""
+    cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table});").fetchall()}
+    if cols and column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition};")
+
+
+def _apply_column_migrations(conn: sqlite3.Connection) -> None:
+    """Ensure existing databases created before Stage 2 have all new columns."""
+    _ensure_column(conn, "users", "username", "TEXT")
+    _ensure_column(conn, "users", "password_hash", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(conn, "users", "role", "TEXT NOT NULL DEFAULT 'customer'")
+    _ensure_column(conn, "users", "simulated_balance", "REAL NOT NULL DEFAULT 10000.0")
+    _ensure_column(conn, "users", "home_ip_prefix", "TEXT NOT NULL DEFAULT '103.21.244.'")
+
+    _ensure_column(conn, "user_sessions", "geo_location", "TEXT NOT NULL DEFAULT 'IN-Mumbai'")
+    _ensure_column(conn, "user_sessions", "device_label", "TEXT NOT NULL DEFAULT 'Primary Web Session'")
+    _ensure_column(conn, "user_sessions", "network_type", "TEXT NOT NULL DEFAULT 'home_broadband'")
+    _ensure_column(conn, "user_sessions", "is_known_ip", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(conn, "user_sessions", "is_known_device", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(conn, "user_sessions", "is_home_location", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(conn, "user_sessions", "failed_logins_1h", "INTEGER NOT NULL DEFAULT 0")
+
+    _ensure_column(conn, "transactions", "status", "TEXT NOT NULL DEFAULT 'COMPLETED'")
+    _ensure_column(
+        conn,
+        "transactions",
+        "decision_reason",
+        "TEXT NOT NULL DEFAULT 'Approved under baseline simulation policy.'",
+    )
+    _ensure_column(conn, "transactions", "notes", "TEXT")
+    _ensure_column(conn, "transactions", "idempotency_key", "TEXT")
+    _ensure_column(conn, "transactions", "balance_deducted", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(conn, "transactions", "session_id", "TEXT")
+
+    _ensure_column(conn, "verification_requests", "requires_admin_release", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "verification_requests", "admin_decision", "TEXT")
+    _ensure_column(conn, "verification_requests", "admin_id", "TEXT")
+    _ensure_column(conn, "verification_requests", "admin_notes", "TEXT")
+    _ensure_column(conn, "verification_requests", "admin_decided_at_utc", "TEXT")
+
+
 def init_db(db_path: Optional[Path] = None) -> None:
-    """Create all TRACE-Fin database tables and indexes if they do not exist."""
+    """Create all TRACE-Fin database tables and apply idempotent column migrations."""
     with get_connection(db_path) as conn:
+        _apply_column_migrations(conn)
         conn.executescript(SCHEMA_SQL)
+        _apply_column_migrations(conn)
         conn.commit()

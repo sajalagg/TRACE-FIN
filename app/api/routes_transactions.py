@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api.deps import enforce_resource_ownership, get_optional_auth_context
 from app.schemas.api_schemas import (
     BeneficiaryEventCreateSchema,
     BeneficiaryEventSchema,
+    LoginSessionSchema,
     RiskComparisonResponseSchema,
     RiskScoreResponseSchema,
     RuleDefinitionSchema,
@@ -58,8 +60,12 @@ def get_users_endpoint(
 
 
 @router.get("/users/{user_id}", response_model=UserProfileSchema)
-def get_user_detail_endpoint(user_id: str) -> UserProfileSchema:
+def get_user_detail_endpoint(
+    user_id: str,
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
+) -> UserProfileSchema:
     """Retrieve a single synthetic user's financial and business profile by ID."""
+    enforce_resource_ownership(auth_ctx, user_id, resource_label="user profile")
     profile = get_user_by_id(user_id=user_id)
     if profile is None:
         raise HTTPException(
@@ -82,8 +88,12 @@ def create_user_endpoint(payload: UserCreateSchema) -> UserProfileSchema:
     "/users/{user_id}/beneficiaries",
     response_model=List[BeneficiaryEventSchema],
 )
-def get_user_beneficiaries_endpoint(user_id: str) -> List[BeneficiaryEventSchema]:
+def get_user_beneficiaries_endpoint(
+    user_id: str,
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
+) -> List[BeneficiaryEventSchema]:
     """List all beneficiary events (added, verified, or bank-account updated) for a user."""
+    enforce_resource_ownership(auth_ctx, user_id, resource_label="user beneficiaries")
     events = list_user_beneficiaries(user_id=user_id)
     if events is None:
         raise HTTPException(
@@ -96,8 +106,10 @@ def get_user_beneficiaries_endpoint(user_id: str) -> List[BeneficiaryEventSchema
 @router.post("/beneficiaries", response_model=BeneficiaryEventSchema)
 def create_beneficiary_endpoint(
     payload: BeneficiaryEventCreateSchema,
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
 ) -> BeneficiaryEventSchema:
     """Add or update a beneficiary for a user ('beneficiary_added', 'beneficiary_verified', or 'beneficiary_bank_updated')."""
+    enforce_resource_ownership(auth_ctx, payload.user_id, resource_label="user beneficiaries")
     try:
         created = create_beneficiary_event(payload=payload)
     except ValueError as exc:
@@ -140,8 +152,15 @@ def get_transactions_endpoint(
         default=None,
         description="Filter transactions by counterparty category (e.g., 'verified_b2b_vendor', 'personal_peer').",
     ),
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
 ) -> TransactionListResponseSchema:
     """Return a paginated, optionally filtered list of synthetic transactions."""
+    if auth_ctx is not None:
+        current_user, _ = auth_ctx
+        if current_user.role != "admin":
+            if user_id and user_id != current_user.user_id:
+                enforce_resource_ownership(auth_ctx, user_id, resource_label="transactions")
+            user_id = current_user.user_id
     return list_transactions(
         limit=limit,
         offset=offset,
@@ -155,8 +174,10 @@ def get_transactions_endpoint(
 @router.post("/transactions", response_model=TransactionCreateResponseSchema)
 def create_transaction_endpoint(
     payload: TransactionCreateSchema,
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
 ) -> TransactionCreateResponseSchema:
     """Submit a new live transaction (with optional forensic precursor toggles) and immediately evaluate its risk."""
+    enforce_resource_ownership(auth_ctx, payload.user_id, resource_label="transactions")
     try:
         created = create_live_transaction(payload=payload)
     except ValueError as exc:
@@ -176,6 +197,7 @@ def create_transaction_endpoint(
 )
 def get_transaction_detail_endpoint(
     transaction_id: str,
+    auth_ctx: Optional[Tuple[UserProfileSchema, LoginSessionSchema]] = Depends(get_optional_auth_context),
 ) -> TransactionDetailResponseSchema:
     """Retrieve a single transaction, its sender's financial/business profile, and linked security events."""
     detail = get_transaction_detail(transaction_id=transaction_id)
@@ -184,6 +206,7 @@ def get_transaction_detail_endpoint(
             status_code=404,
             detail=f"Transaction '{transaction_id}' not found.",
         )
+    enforce_resource_ownership(auth_ctx, detail.transaction.user_id, resource_label=f"transaction '{transaction_id}'")
     return detail
 
 

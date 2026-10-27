@@ -282,9 +282,13 @@ def compute_evaluation_report(
 def get_dashboard_summary(db_path: Optional[Path] = None) -> DashboardSummarySchema:
     """Return top-level KPI counts and recent transactions for the UI dashboard."""
     with get_connection(db_path) as conn:
-        total_users = int(conn.execute("SELECT COUNT(*) AS cnt FROM users;").fetchone()["cnt"])
+        total_users = int(
+            conn.execute(
+                "SELECT COUNT(*) AS cnt FROM users WHERE role = 'customer';"
+            ).fetchone()["cnt"]
+        )
         exp_rows = conn.execute(
-            "SELECT expenditure_model, COUNT(*) AS cnt FROM users GROUP BY expenditure_model;"
+            "SELECT expenditure_model, COUNT(*) AS cnt FROM users WHERE role = 'customer' GROUP BY expenditure_model;"
         ).fetchall()
         users_by_exp = {r["expenditure_model"]: int(r["cnt"]) for r in exp_rows}
 
@@ -401,6 +405,7 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
     with get_connection(db_path) as conn:
         user_rows = conn.execute("SELECT * FROM users;").fetchall()
         users_by_id = {u["user_id"]: u for u in user_rows}
+        customer_users_cnt = sum(1 for u in user_rows if (u["role"] if "role" in u.keys() else "customer") == "customer")
 
         pref_rows = conn.execute("SELECT user_id, risk_threshold FROM user_preferences;").fetchall()
         prefs_by_id = {p["user_id"]: int(p["risk_threshold"]) for p in pref_rows}
@@ -454,7 +459,19 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
             elif scen_label == "threat_intel_active_or_stale_ip" and m3_score > m2_score:
                 representative_by_scenario[scen_label] = tx_id
 
-            # Determine operational workflow status from verification/incident tables or score band
+            tx_keys = tx.keys()
+            raw_status = str(tx["status"]) if "status" in tx_keys and tx["status"] else "COMPLETED"
+            decision_reason = (
+                str(tx["decision_reason"])
+                if "decision_reason" in tx_keys and tx["decision_reason"]
+                else "Approved under baseline simulation policy."
+            )
+            balance_deducted = (
+                bool(tx["balance_deducted"]) if "balance_deducted" in tx_keys else True
+            )
+            session_id = str(tx["session_id"]) if "session_id" in tx_keys and tx["session_id"] else None
+
+            # Determine operational workflow status from verification/incident tables, persisted status, or score band
             if tx_id in inc_by_tx:
                 inc_st = inc_by_tx[tx_id]
                 status_str = "Blocked" if inc_st in ("open", "investigating") else "Settled"
@@ -464,8 +481,18 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
                     status_str = "Blocked"
                 elif ver_st == "confirmed_legitimate":
                     status_str = "Settled"
+                elif raw_status == "HELD_HIGH_RISK":
+                    status_str = "Flagged"
                 else:
                     status_str = "Pending Review"
+            elif raw_status == "BLOCKED":
+                status_str = "Blocked"
+            elif raw_status == "HELD_HIGH_RISK":
+                status_str = "Flagged"
+            elif raw_status == "PENDING_VERIFICATION":
+                status_str = "Pending Review"
+            elif scen_label == "live_custom_demo" and raw_status == "COMPLETED":
+                status_str = "Settled"
             else:
                 if m3_score >= 85:
                     status_str = "Flagged"
@@ -537,6 +564,10 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
                     "amount": float(tx["amount"]),
                     "currency": tx["currency"],
                     "status": status_str,
+                    "raw_status": raw_status,
+                    "decision_reason": decision_reason,
+                    "balance_deducted": balance_deducted,
+                    "session_id": session_id,
                     "method1_score": m1_score,
                     "method1_level": m1_level,
                     "method2_score": m2_score,
@@ -604,7 +635,7 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
             "total_transactions": total,
             "live_created_count": live_created_cnt,
             "historical_baseline_count": total - live_created_cnt,
-            "total_users": len(users_by_id),
+            "total_users": customer_users_cnt,
             "high_risk_count": high_risk,
             "critical_risk_count": critical_risk,
             "needs_review_count": needs_review,
