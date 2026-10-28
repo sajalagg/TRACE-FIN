@@ -7,8 +7,10 @@ from fastapi import APIRouter, Query
 from app.schemas.api_schemas import (
     DashboardSummarySchema,
     EvaluationReportResponseSchema,
+    ThreatIndicatorCreateSchema,
 )
 from app.services.evaluation import (
+    add_threat_intelligence_indicator,
     compute_evaluation_report,
     get_dashboard_summary,
     get_full_analytics_dataset,
@@ -32,8 +34,23 @@ def get_dashboard_dataset_endpoint() -> Dict[str, Any]:
 
 @router.get("/threat-intel", response_model=List[Dict[str, Any]])
 def get_threat_intel_endpoint() -> List[Dict[str, Any]]:
-    """Return all synthetic threat-intelligence indicators with freshness validation and linked transactions."""
+    """Return all threat-intelligence indicators with freshness validation and linked transactions."""
     return get_threat_intelligence_registry()
+
+
+@router.post("/threat-intel", status_code=201)
+def create_threat_intel_endpoint(payload: ThreatIndicatorCreateSchema) -> Dict[str, Any]:
+    """Register a new threat-intelligence indicator into SQLite."""
+    return add_threat_intelligence_indicator(
+        indicator=payload.indicator,
+        indicator_type=payload.indicator_type,
+        source_label=payload.source_label,
+        threat_category=payload.threat_category,
+        confidence_level=payload.confidence_level,
+        description=payload.description,
+        expires_at_utc=payload.expires_at_utc,
+        expires_in_days=payload.expires_in_days,
+    )
 
 
 @router.get("/evaluation/metrics", response_model=EvaluationReportResponseSchema)

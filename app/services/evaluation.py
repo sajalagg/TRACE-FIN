@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -495,15 +496,10 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
                 status_str = "Flagged"
             elif raw_status == "PENDING_VERIFICATION":
                 status_str = "Pending Review"
-            elif scen_label == "live_custom_demo" and raw_status == "COMPLETED":
+            elif raw_status == "COMPLETED":
                 status_str = "Settled"
             else:
-                if m3_score >= 85:
-                    status_str = "Flagged"
-                elif m2_score >= u_thresh or m3_score >= u_thresh:
-                    status_str = "Pending Review"
-                else:
-                    status_str = "Settled"
+                status_str = "Settled"
 
             all_active_rules = [*ctx_rules, *ti_rules]
             evidence_flags = [r.rule_id for r in all_active_rules]
@@ -718,5 +714,64 @@ def get_threat_intelligence_registry(db_path: Optional[Path] = None) -> List[Dic
             }
         )
     return results
+
+
+def add_threat_intelligence_indicator(
+    indicator: str,
+    indicator_type: str = "ip_address",
+    source_label: str = "Internal Forensic Escalation",
+    threat_category: str = "bulletproof_hosting_vpn",
+    confidence_level: str = "high",
+    description: str = "",
+    expires_at_utc: Optional[str] = None,
+    expires_in_days: int = 90,
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Register a new threat indicator into SQLite."""
+    now = datetime.now(timezone.utc)
+    now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if not expires_at_utc:
+        expires_at_utc = (now + timedelta(days=expires_in_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    indicator_clean = indicator.strip()
+    ind_type_clean = "beneficiary_account" if "beneficiary" in indicator_type.lower() else "ip_address"
+    conf_clean = confidence_level.lower()
+    if conf_clean not in ("high", "medium", "low"):
+        conf_clean = "high"
+
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO threat_intelligence (
+                indicator, indicator_type, source_label, threat_category,
+                confidence_level, first_seen_utc, last_seen_utc, expires_at_utc,
+                is_demo_indicator, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?);
+            """,
+            (
+                indicator_clean,
+                ind_type_clean,
+                source_label.strip() or "Internal Forensic Escalation",
+                threat_category.strip() or "unclassified_threat",
+                conf_clean,
+                now_str,
+                now_str,
+                expires_at_utc,
+                description.strip() or "Registered by fraud investigator.",
+            ),
+        )
+        conn.commit()
+
+    return {
+        "success": True,
+        "indicator": indicator_clean,
+        "indicator_type": ind_type_clean,
+        "source_label": source_label,
+        "threat_category": threat_category,
+        "confidence_level": conf_clean,
+        "expires_at_utc": expires_at_utc,
+        "message": f"Threat indicator '{indicator_clean}' successfully registered.",
+    }
+
 
 
