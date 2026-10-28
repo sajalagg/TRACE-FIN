@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from app.core.database import get_connection
+from app.core.database import get_connection, next_sequential_id
 from app.core.policy import TX_STATUS_COMPLETED, evaluate_transfer_policy
 from app.core.security import hash_password
 from app.schemas.api_schemas import (
@@ -317,15 +317,9 @@ def create_user_profile(
                 raise ValueError(f"User ID '{payload.user_id}' already exists.")
             user_id = payload.user_id
         else:
-            cnt = int(
-                conn.execute(
-                    "SELECT COUNT(*) AS cnt FROM users WHERE user_id LIKE 'USR-%';"
-                ).fetchone()["cnt"]
+            user_id = next_sequential_id(
+                conn, "users", "user_id", "USR-", width=3, where_clause="user_id LIKE 'USR-%'"
             )
-            user_id = f"USR-{cnt + 1:03d}"
-            while conn.execute("SELECT 1 FROM users WHERE user_id = ?;", (user_id,)).fetchone():
-                cnt += 1
-                user_id = f"USR-{cnt + 1:03d}"
 
         username_val = (payload.username or user_id.lower()).strip().lower()
         existing_uname = conn.execute(
@@ -387,8 +381,7 @@ def create_user_profile(
         )
 
         # Register a default known device so normal transactions for this user have a baseline device
-        dev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM device_events;").fetchone()["cnt"])
-        dev_ev_id = f"DEV-EVT-{dev_cnt + 1:04d}"
+        dev_ev_id = next_sequential_id(conn, "device_events", "event_id", "DEV-EVT-")
         default_dev_id = f"DEV-{user_id}-PRIMARY"
         conn.execute(
             """
@@ -461,9 +454,10 @@ def create_beneficiary_event(
         if u_row is None:
             return None
 
-        ev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM beneficiary_events;").fetchone()["cnt"])
-        event_id = f"BEN-EVT-{ev_cnt + 1:04d}"
-        ben_id = payload.beneficiary_id or f"BEN-CUSTOM-{ev_cnt + 1:03d}"
+        event_id = next_sequential_id(conn, "beneficiary_events", "event_id", "BEN-EVT-")
+        ben_id = payload.beneficiary_id or next_sequential_id(
+            conn, "beneficiaries", "beneficiary_id", "BEN-CUSTOM-", width=3
+        )
 
         conn.execute(
             """
@@ -600,15 +594,11 @@ def create_live_transaction(
             str(known_dev_row["device_id"]) if known_dev_row else f"DEV-{uid}-PRIMARY"
         )
 
-        tx_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM transactions;").fetchone()["cnt"])
-        tx_id = f"TX-{tx_cnt + 1:04d}"
-        while conn.execute("SELECT 1 FROM transactions WHERE transaction_id = ?;", (tx_id,)).fetchone():
-            tx_cnt += 1
-            tx_id = f"TX-{tx_cnt + 1:04d}"
+        tx_id = next_sequential_id(conn, "transactions", "transaction_id", "TX-")
 
         if payload.simulate_unseen_device:
-            dev_id = payload.device_id or f"DEV-UNSEEN-{tx_cnt + 1:03d}"
-            dev_ev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM device_events;").fetchone()["cnt"])
+            dev_id = payload.device_id or f"DEV-UNSEEN-{tx_id.split('-')[-1]}"
+            dev_ev_id = next_sequential_id(conn, "device_events", "event_id", "DEV-EVT-")
             conn.execute(
                 """
                 INSERT INTO device_events (
@@ -617,7 +607,7 @@ def create_live_transaction(
                 ) VALUES (?, ?, ?, ?, 'Unrecognized Live Demo Device', 'new_device_detected', 'new');
                 """,
                 (
-                    f"DEV-EVT-{dev_ev_cnt + 1:04d}",
+                    dev_ev_id,
                     uid,
                     _fmt(tx_dt - timedelta(minutes=5)),
                     dev_id,
@@ -626,11 +616,9 @@ def create_live_transaction(
         else:
             dev_id = payload.device_id or default_known_dev
 
-        auth_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM authentication_events;").fetchone()["cnt"])
-
         # 1. Optional Impossible Travel precursor (login at home 18 mins before foreign transaction)
         if payload.simulate_impossible_travel_from_home:
-            auth_cnt += 1
+            auth_ev_id = next_sequential_id(conn, "authentication_events", "event_id", "AUTH-EVT-")
             conn.execute(
                 """
                 INSERT INTO authentication_events (
@@ -639,7 +627,7 @@ def create_live_transaction(
                 ) VALUES (?, ?, ?, 'login_success', '103.21.244.10', ?, ?, 1);
                 """,
                 (
-                    f"AUTH-EVT-{auth_cnt:04d}",
+                    auth_ev_id,
                     uid,
                     _fmt(tx_dt - timedelta(minutes=18)),
                     home_geo,
@@ -649,7 +637,7 @@ def create_live_transaction(
 
         # 2. Optional Failed Logins precursor
         for f_i in range(payload.simulate_failed_logins):
-            auth_cnt += 1
+            auth_ev_id = next_sequential_id(conn, "authentication_events", "event_id", "AUTH-EVT-")
             conn.execute(
                 """
                 INSERT INTO authentication_events (
@@ -658,7 +646,7 @@ def create_live_transaction(
                 ) VALUES (?, ?, ?, 'login_failure', ?, ?, ?, 0);
                 """,
                 (
-                    f"AUTH-EVT-{auth_cnt:04d}",
+                    auth_ev_id,
                     uid,
                     _fmt(tx_dt - timedelta(minutes=10 + f_i)),
                     payload.ip_address,
@@ -689,7 +677,7 @@ def create_live_transaction(
         ).fetchone()
 
         if recent_login_exists is None or payload.simulate_impossible_travel_from_home or payload.simulate_failed_logins > 0:
-            auth_cnt += 1
+            auth_ev_id = next_sequential_id(conn, "authentication_events", "event_id", "AUTH-EVT-")
             conn.execute(
                 """
                 INSERT INTO authentication_events (
@@ -698,7 +686,7 @@ def create_live_transaction(
                 ) VALUES (?, ?, ?, 'login_success', ?, ?, ?, 1);
                 """,
                 (
-                    f"AUTH-EVT-{auth_cnt:04d}",
+                    auth_ev_id,
                     uid,
                     _fmt(tx_dt - timedelta(minutes=6)),
                     payload.ip_address,
@@ -708,9 +696,8 @@ def create_live_transaction(
             )
 
         # 4. Optional Rapid New Beneficiary or Vendor BEC Bank Modification
-        ben_ev_cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM beneficiary_events;").fetchone()["cnt"])
         if payload.simulate_rapid_new_beneficiary:
-            ben_ev_cnt += 1
+            ben_ev_id = next_sequential_id(conn, "beneficiary_events", "event_id", "BEN-EVT-")
             conn.execute(
                 """
                 INSERT INTO beneficiary_events (
@@ -720,7 +707,7 @@ def create_live_transaction(
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 'beneficiary_added', 'Added 4 mins prior to live demo transaction.');
                 """,
                 (
-                    f"BEN-EVT-{ben_ev_cnt:04d}",
+                    ben_ev_id,
                     uid,
                     payload.beneficiary_id,
                     payload.beneficiary_name,
@@ -731,7 +718,7 @@ def create_live_transaction(
             )
 
         if payload.simulate_vendor_bec_bank_update:
-            ben_ev_cnt += 1
+            ben_ev_id = next_sequential_id(conn, "beneficiary_events", "event_id", "BEN-EVT-")
             conn.execute(
                 """
                 INSERT INTO beneficiary_events (
@@ -741,7 +728,7 @@ def create_live_transaction(
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 'beneficiary_bank_updated', 'Bank account/IBAN modified 12 mins prior to live demo wire.');
                 """,
                 (
-                    f"BEN-EVT-{ben_ev_cnt:04d}",
+                    ben_ev_id,
                     uid,
                     payload.beneficiary_id,
                     payload.beneficiary_name,
@@ -793,12 +780,15 @@ def create_live_transaction(
         conn.commit()
 
     comparison = compare_transaction_scores(transaction_id=tx_id, db_path=db_path)
+    assert comparison is not None
+    # Reuse the already-computed M3 score instead of re-scoring the transaction from scratch.
     alert_dec = evaluate_alert_decision(
         transaction_id=tx_id,
         method="contextual_ti",
         db_path=db_path,
+        precomputed_score=comparison.contextual_ti,
     )
-    assert comparison is not None and alert_dec is not None
+    assert alert_dec is not None
 
     policy = evaluate_transfer_policy(
         risk_score=comparison.contextual_ti.risk_score,
@@ -841,16 +831,7 @@ def create_live_transaction(
                 (tx_id,),
             ).fetchone()
             if existing_ver is None:
-                ver_cnt = int(
-                    conn.execute("SELECT COUNT(*) AS cnt FROM verification_requests;").fetchone()["cnt"]
-                )
-                req_id = f"VER-{ver_cnt + 1:04d}"
-                while conn.execute(
-                    "SELECT 1 FROM verification_requests WHERE request_id = ?;",
-                    (req_id,),
-                ).fetchone():
-                    ver_cnt += 1
-                    req_id = f"VER-{ver_cnt + 1:04d}"
+                req_id = next_sequential_id(conn, "verification_requests", "request_id", "VER-")
                 conn.execute(
                     """
                     INSERT INTO verification_requests (

@@ -906,6 +906,40 @@ def _build_counterfactual_summary(
     )
 
 
+def _build_score_response(
+    transaction_id: str,
+    user_id: str,
+    method: str,
+    tx_row: sqlite3.Row,
+    user_row: sqlite3.Row,
+    threshold: int,
+    rules: List[TriggeredRuleSchema],
+) -> RiskScoreResponseSchema:
+    raw_sum = sum(r.points_awarded for r in rules)
+    capped_score = min(100, max(0, raw_sum))
+    counterfactual = _build_counterfactual_summary(
+        tx_row=tx_row,
+        user_row=user_row,
+        method=method,
+        final_score=capped_score,
+        threshold=threshold,
+        triggered_rules=rules,
+    )
+    return RiskScoreResponseSchema(
+        transaction_id=transaction_id,
+        user_id=user_id,
+        method=method,
+        raw_points_sum=raw_sum,
+        risk_score=capped_score,
+        risk_band=_score_to_band(capped_score),
+        user_alert_threshold=threshold,
+        exceeds_user_threshold=(capped_score >= threshold),
+        score_interpretation=SCORE_INTERPRETATION_TEXT,
+        triggered_rules=rules,
+        counterfactual_summary=counterfactual,
+    )
+
+
 def score_transaction(
     transaction_id: str,
     method: str = "contextual",
@@ -934,6 +968,8 @@ def score_transaction(
             "SELECT * FROM users WHERE user_id = ?;",
             (user_id,),
         ).fetchone()
+        if user_row is None:
+            return None
         pref_row = conn.execute(
             "SELECT risk_threshold FROM user_preferences WHERE user_id = ?;",
             (user_id,),
@@ -949,29 +985,14 @@ def score_transaction(
                 conn, tx_row
             )
 
-    raw_sum = sum(r.points_awarded for r in rules)
-    capped_score = min(100, max(0, raw_sum))
-    counterfactual = _build_counterfactual_summary(
-        tx_row=tx_row,
-        user_row=user_row,
-        method=method,
-        final_score=capped_score,
-        threshold=threshold,
-        triggered_rules=rules,
-    )
-
-    return RiskScoreResponseSchema(
+    return _build_score_response(
         transaction_id=transaction_id,
         user_id=user_id,
         method=method,
-        raw_points_sum=raw_sum,
-        risk_score=capped_score,
-        risk_band=_score_to_band(capped_score),
-        user_alert_threshold=threshold,
-        exceeds_user_threshold=(capped_score >= threshold),
-        score_interpretation=SCORE_INTERPRETATION_TEXT,
-        triggered_rules=rules,
-        counterfactual_summary=counterfactual,
+        tx_row=tx_row,
+        user_row=user_row,
+        threshold=threshold,
+        rules=rules,
     )
 
 
@@ -979,37 +1000,51 @@ def compare_transaction_scores(
     transaction_id: str,
     db_path: Optional[Path] = None,
 ) -> Optional[RiskComparisonResponseSchema]:
-    """Run all three scoring methods on `transaction_id` and return a side-by-side diff."""
+    """Run all three scoring methods on `transaction_id` in a single pass and return a side-by-side diff."""
     with get_connection(db_path) as conn:
         tx_row = conn.execute(
-            """
-            SELECT t.*, u.display_name, u.profile_type, u.expenditure_model
-            FROM transactions t
-            JOIN users u ON t.user_id = u.user_id
-            WHERE t.transaction_id = ?;
-            """,
+            "SELECT * FROM transactions WHERE transaction_id = ?;",
             (transaction_id,),
         ).fetchone()
         if tx_row is None:
             return None
 
-    base_res = score_transaction(transaction_id, method="baseline", db_path=db_path)
-    ctx_res = score_transaction(transaction_id, method="contextual", db_path=db_path)
-    ti_res = score_transaction(transaction_id, method="contextual_ti", db_path=db_path)
+        user_id = tx_row["user_id"]
+        user_row = conn.execute(
+            "SELECT * FROM users WHERE user_id = ?;",
+            (user_id,),
+        ).fetchone()
+        if user_row is None:
+            return None
+        pref_row = conn.execute(
+            "SELECT risk_threshold FROM user_preferences WHERE user_id = ?;",
+            (user_id,),
+        ).fetchone()
+        threshold = int(pref_row["risk_threshold"]) if pref_row else 60
 
-    assert base_res is not None and ctx_res is not None and ti_res is not None
+        base_rules = _evaluate_baseline_rules(conn, tx_row)
+        ctx_rules = _evaluate_contextual_rules(conn, tx_row, user_row)
+        ti_only_rules = _evaluate_threat_intel_rules(conn, tx_row)
+        ti_rules = ctx_rules + ti_only_rules
+
+    base_res = _build_score_response(
+        transaction_id, user_id, "baseline", tx_row, user_row, threshold, base_rules
+    )
+    ctx_res = _build_score_response(
+        transaction_id, user_id, "contextual", tx_row, user_row, threshold, ctx_rules
+    )
+    ti_res = _build_score_response(
+        transaction_id, user_id, "contextual_ti", tx_row, user_row, threshold, ti_rules
+    )
 
     delta_ctx = ctx_res.risk_score - base_res.risk_score
     delta_ti = ti_res.risk_score - ctx_res.risk_score
-
-    ctx_rule_ids = {r.rule_id for r in ctx_res.triggered_rules}
-    ti_only_rules = [r for r in ti_res.triggered_rules if r.rule_id not in ctx_rule_ids]
 
     if delta_ctx < 0:
         narrative = (
             f"Contextual scoring LOWERED the score by {abs(delta_ctx)} points "
             f"({base_res.risk_score} -> {ctx_res.risk_score}) because the transaction fits "
-            f"'{tx_row['display_name']}' ({tx_row['expenditure_model']}) and its established supply-chain profile, "
+            f"'{user_row['display_name']}' ({user_row['expenditure_model']}) and its established supply-chain profile, "
             f"preventing a baseline false positive."
         )
     elif delta_ctx > 0 or delta_ti > 0:
@@ -1025,18 +1060,18 @@ def compare_transaction_scores(
 
     return RiskComparisonResponseSchema(
         transaction_id=transaction_id,
-        user_id=tx_row["user_id"],
-        user_display_name=tx_row["display_name"],
-        user_profile_type=tx_row["profile_type"],
-        user_expenditure_model=tx_row["expenditure_model"],
+        user_id=user_id,
+        user_display_name=user_row["display_name"],
+        user_profile_type=user_row["profile_type"],
+        user_expenditure_model=user_row["expenditure_model"],
         amount=float(tx_row["amount"]),
-        user_alert_threshold=ctx_res.user_alert_threshold,
+        user_alert_threshold=threshold,
         baseline=base_res,
         contextual=ctx_res,
         contextual_ti=ti_res,
         delta_contextual_vs_baseline=delta_ctx,
         delta_ti_vs_contextual=delta_ti,
-        context_added_rules=ctx_res.triggered_rules,
+        context_added_rules=ctx_rules,
         ti_added_rules=ti_only_rules,
         comparison_narrative=narrative,
     )

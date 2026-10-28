@@ -82,7 +82,7 @@ def test_verification_approval_preserves_risk_evidence(
 def test_verification_denial_creates_incident_and_handles_repeats(
     seeded_env: tuple[TestClient, Path],
 ) -> None:
-    """Verify user denial creates an evidence-linked incident with SHA-256 hash and prevents duplicates."""
+    """Verify user denial creates an evidence-linked incident and prevents duplicates."""
     client, db_file = seeded_env
 
     create_res = client.post("/verification-requests", json={"transaction_id": "TX-0391"}).json()
@@ -116,7 +116,6 @@ def test_verification_denial_creates_incident_and_handles_repeats(
         inc_row = conn.execute("SELECT * FROM incidents WHERE incident_id = 'INC-0001';").fetchone()
         assert inc_row["status"] == "open"
         assert inc_row["severity"] == "critical"
-        assert len(inc_row["evidence_sha256"]) == 64
 
         ev_count = conn.execute(
             "SELECT COUNT(*) AS cnt FROM incident_evidence WHERE incident_id = 'INC-0001';"

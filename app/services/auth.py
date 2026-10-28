@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from app.core.database import get_connection
+from app.core.database import get_connection, next_sequential_id
 from app.core.security import (
     generate_session_token,
     hash_password,
@@ -209,13 +209,9 @@ def register_customer_account(
         if existing is not None:
             raise ValueError(f"Username '{clean_username}' is already registered.")
 
-        cnt = int(
-            conn.execute("SELECT COUNT(*) AS c FROM users WHERE user_id LIKE 'USR-%';").fetchone()["c"]
+        new_uid = next_sequential_id(
+            conn, "users", "user_id", "USR-", width=3, where_clause="user_id LIKE 'USR-%'"
         )
-        new_uid = f"USR-{cnt + 1:03d}"
-        while conn.execute("SELECT 1 FROM users WHERE user_id = ?;", (new_uid,)).fetchone() is not None:
-            cnt += 1
-            new_uid = f"USR-{cnt + 1:03d}"
 
         conn.execute(
             """
@@ -266,7 +262,7 @@ def register_customer_account(
         # Register the user's primary baseline device
         uid_num = new_uid.split("-")[1]
         dev_id = f"DEV-{uid_num}-PRIMARY"
-        dev_cnt = int(conn.execute("SELECT COUNT(*) AS c FROM device_events;").fetchone()["c"])
+        dev_ev_id = next_sequential_id(conn, "device_events", "event_id", "DEV-EVT-")
         conn.execute(
             """
             INSERT INTO device_events (
@@ -275,7 +271,7 @@ def register_customer_account(
             ) VALUES (?, ?, ?, ?, ?, 'device_registered', 'known');
             """,
             (
-                f"DEV-EVT-{dev_cnt + 1:04d}",
+                dev_ev_id,
                 new_uid,
                 now_utc,
                 dev_id,
@@ -516,7 +512,7 @@ def authenticate_and_create_session(
                 (uid, dev_id),
             ).fetchone()
             if existing_new_dev is None:
-                dev_cnt = int(conn.execute("SELECT COUNT(*) AS c FROM device_events;").fetchone()["c"])
+                dev_ev_id = next_sequential_id(conn, "device_events", "event_id", "DEV-EVT-")
                 conn.execute(
                     """
                     INSERT INTO device_events (
@@ -525,7 +521,7 @@ def authenticate_and_create_session(
                     ) VALUES (?, ?, ?, ?, ?, 'new_device_detected', 'new');
                     """,
                     (
-                        f"DEV-EVT-{dev_cnt + 1:04d}",
+                        dev_ev_id,
                         uid,
                         now_utc,
                         dev_id,
@@ -535,8 +531,7 @@ def authenticate_and_create_session(
 
         # Create the persisted session record
         raw_token, token_digest = generate_session_token()
-        ses_cnt = int(conn.execute("SELECT COUNT(*) AS c FROM user_sessions;").fetchone()["c"])
-        session_id = f"SES-{ses_cnt + 1:04d}"
+        session_id = next_sequential_id(conn, "user_sessions", "session_id", "SES-")
 
         conn.execute(
             """

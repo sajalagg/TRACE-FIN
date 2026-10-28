@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from services.data_provider import get_transactions
+from services.data_provider import get_user_transactions
 from ui.components import (
     fmt_currency,
     fmt_ts,
@@ -28,8 +28,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-all_txs = get_transactions()
-my_txs = [t for t in all_txs if t.get("sender_id") == uid]
+my_txs = get_user_transactions(uid)
 
 f1, f2 = st.columns([2, 1])
 with f1:

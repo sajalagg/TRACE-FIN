@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from app.core.database import get_connection
+from app.core.database import get_connection, next_sequential_id
 from app.schemas.api_schemas import (
     AdminDecisionResponseSchema,
     AdminTransactionDecisionSchema,
@@ -151,9 +151,7 @@ def create_verification_request(
         if existing is not None:
             return _row_to_verification_schema(conn, existing, created_new=False)
 
-        cnt_row = conn.execute("SELECT COUNT(*) AS cnt FROM verification_requests;").fetchone()
-        next_num = int(cnt_row["cnt"]) + 1
-        req_id = f"VER-{next_num:04d}"
+        req_id = next_sequential_id(conn, "verification_requests", "request_id", "VER-")
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         conn.execute(
@@ -376,11 +374,7 @@ def admin_decide_transaction(
         ).fetchone()
 
         if ver_row is None:
-            cnt = int(conn.execute("SELECT COUNT(*) AS cnt FROM verification_requests;").fetchone()["cnt"])
-            req_id = f"VER-{cnt + 1:04d}"
-            while conn.execute("SELECT 1 FROM verification_requests WHERE request_id = ?;", (req_id,)).fetchone():
-                cnt += 1
-                req_id = f"VER-{cnt + 1:04d}"
+            req_id = next_sequential_id(conn, "verification_requests", "request_id", "VER-")
             conn.execute(
                 """
                 INSERT INTO verification_requests (

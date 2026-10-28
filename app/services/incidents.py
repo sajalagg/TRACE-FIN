@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.core.database import get_connection
+from app.core.database import get_connection, next_sequential_id
 from app.schemas.api_schemas import (
-    EvidenceIntegritySchema,
     IncidentDetailResponseSchema,
     IncidentEvidenceSchema,
     IncidentStatusUpdateSchema,
@@ -20,13 +18,6 @@ from app.schemas.api_schemas import (
 )
 from app.services.evidence import build_transaction_timeline
 from app.services.scoring import score_transaction
-
-
-def _compute_canonical_sha256(snapshot_obj: Dict[str, Any]) -> tuple[str, str]:
-    """Serialize `snapshot_obj` deterministically and return `(canonical_json, sha256_hex)`."""
-    canonical_json = json.dumps(snapshot_obj, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
-    return canonical_json, digest
 
 
 def _build_recommended_actions(
@@ -112,9 +103,7 @@ def create_or_get_incident_for_denial(
         (transaction_id,),
     ).fetchone()
 
-    count_row = conn.execute("SELECT COUNT(*) AS cnt FROM incidents;").fetchone()
-    next_num = int(count_row["cnt"]) + 1
-    incident_id = f"INC-{next_num:04d}"
+    incident_id = next_sequential_id(conn, "incidents", "incident_id", "INC-")
 
     score_val = score_res.risk_score
     if score_val >= 85:
@@ -163,7 +152,7 @@ def create_or_get_incident_for_denial(
             f"{e.source_table}:{e.source_record_id}" for e in timeline_res.timeline
         ],
     }
-    canonical_json, sha256_hex = _compute_canonical_sha256(snapshot_payload)
+    evidence_json = json.dumps(snapshot_payload)
 
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     note_suffix = f" User note: {denial_notes}" if denial_notes else ""
@@ -180,7 +169,7 @@ def create_or_get_incident_for_denial(
             status, severity, risk_score_at_creation, scoring_method_used,
             summary_reason, recommended_actions, evidence_snapshot_json,
             evidence_sha256, created_at_utc, updated_at_utc
-        ) VALUES (?, ?, ?, ?, 'open', ?, ?, 'contextual_ti', ?, ?, ?, ?, ?, ?);
+        ) VALUES (?, ?, ?, ?, 'open', ?, ?, 'contextual_ti', ?, ?, ?, '', ?, ?);
         """,
         (
             incident_id,
@@ -191,8 +180,7 @@ def create_or_get_incident_for_denial(
             score_val,
             summary_reason,
             recommended,
-            canonical_json,
-            sha256_hex,
+            evidence_json,
             now_utc,
             now_utc,
         ),
@@ -225,6 +213,7 @@ def create_or_get_incident_for_denial(
 
 
 def _row_to_incident_summary(row: sqlite3.Row) -> IncidentSummarySchema:
+    keys = row.keys()
     return IncidentSummarySchema(
         incident_id=row["incident_id"],
         transaction_id=row["transaction_id"],
@@ -241,7 +230,7 @@ def _row_to_incident_summary(row: sqlite3.Row) -> IncidentSummarySchema:
         risk_score_at_creation=int(row["risk_score_at_creation"]),
         scoring_method_used=row["scoring_method_used"],
         summary_reason=row["summary_reason"],
-        evidence_sha256=row["evidence_sha256"],
+        evidence_sha256=row["evidence_sha256"] if "evidence_sha256" in keys else "",
         created_at_utc=row["created_at_utc"],
         updated_at_utc=row["updated_at_utc"],
     )
@@ -346,22 +335,6 @@ def get_incident_detail(
     )
     assert risk_eval is not None
 
-    # Verify SHA-256 integrity of the stored canonical JSON snapshot
-    stored_sha256 = inc_row["evidence_sha256"]
-    raw_snapshot_json = inc_row["evidence_snapshot_json"]
-    recomputed_sha256 = hashlib.sha256(raw_snapshot_json.encode("utf-8")).hexdigest()
-    is_valid = recomputed_sha256 == stored_sha256
-    integrity = EvidenceIntegritySchema(
-        stored_sha256=stored_sha256,
-        recomputed_sha256=recomputed_sha256,
-        integrity_verified=is_valid,
-        verification_message=(
-            "Verified: Stored forensic snapshot matches its SHA-256 digest."
-            if is_valid
-            else "INTEGRITY MISMATCH: Stored forensic snapshot does not match original SHA-256 digest!"
-        ),
-    )
-
     tx_summary = TransactionSummarySchema(
         transaction_id=tx_id,
         user_id=inc_row["user_id"],
@@ -452,7 +425,6 @@ def get_incident_detail(
     return IncidentDetailResponseSchema(
         incident=_row_to_incident_summary(inc_row),
         recommended_actions=rec_lines,
-        evidence_integrity=integrity,
         transaction=tx_summary,
         user_profile=user_profile,
         verification_request=ver_schema,

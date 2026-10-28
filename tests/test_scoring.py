@@ -193,11 +193,37 @@ def test_missing_authentication_telemetry_explicit_rule(
 
 
 def test_scoring_error_handling(seeded_env: tuple[TestClient, Path]) -> None:
-    """Verify 404 on unknown transaction_id and 422 on invalid scoring method."""
-    client, _ = seeded_env
+    """Verify 404 on unknown transaction_id, risk compare 404, and 422 on invalid scoring method."""
+    client, db_file = seeded_env
 
     res_404 = client.get("/transactions/TX-DOES-NOT-EXIST/risk?method=contextual")
     assert res_404.status_code == 404
 
+    res_cmp_404 = client.get("/transactions/TX-DOES-NOT-EXIST/risk/compare")
+    assert res_cmp_404.status_code == 404
+
     res_bad_method = client.get("/transactions/TX-0001/risk?method=magic_ml")
     assert res_bad_method.status_code == 422
+
+    # Verify orphan transaction where user does not exist returns None / 404 gracefully
+    with get_connection(db_file) as conn:
+        conn.execute("PRAGMA foreign_keys = OFF;")
+        conn.execute(
+            """
+            INSERT INTO transactions (
+                transaction_id, user_id, amount, currency, timestamp_utc,
+                beneficiary_id, beneficiary_name, beneficiary_category,
+                beneficiary_industry, device_id, ip_address, geo_location,
+                is_suspicious, scenario_label, status, decision_reason,
+                balance_deducted, session_id
+            ) VALUES ('TX-ORPHAN', 'USR-NONEXIST', 100.0, 'INR', '2026-03-15T12:00:00Z',
+                      'BEN-1', 'Name', 'retail', 'tech', 'dev', '1.1.1.1', 'City',
+                      0, 'normal_routine', 'COMPLETED', 'reason', 1, NULL);
+            """
+        )
+        conn.commit()
+
+    res_orphan_risk = client.get("/transactions/TX-ORPHAN/risk")
+    assert res_orphan_risk.status_code == 404
+    res_orphan_cmp = client.get("/transactions/TX-ORPHAN/risk/compare")
+    assert res_orphan_cmp.status_code == 404

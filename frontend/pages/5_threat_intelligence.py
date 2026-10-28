@@ -16,7 +16,7 @@ import streamlit as st
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from services.data_provider import create_threat_indicator, get_threat_indicators, get_transaction
+from services.data_provider import create_threat_indicator, get_threat_indicators, get_transaction_index
 from ui.components import (
     fmt_currency,
     inject_css,
@@ -363,15 +363,16 @@ if all_ids:
             assoc_txs = sel_ind.get("associated_tx_ids", [])
             st.markdown(f"**Correlated Transactions ({len(assoc_txs)} matches)**")
             if assoc_txs:
+                tx_index = get_transaction_index()
                 sel_assoc_tx = st.selectbox(
                     "Select a matched transaction to inspect",
                     options=assoc_txs[:30],
                     format_func=lambda tid: (
-                        f"{tid} · {get_transaction(tid)['sender_name'][:18]} → {get_transaction(tid)['beneficiary_name'][:16]} · "
-                        f"{fmt_currency(get_transaction(tid)['amount'])} · "
-                        f"Risk: {get_transaction(tid).get('method3_score', get_transaction(tid).get('risk_score', 0))}/100 "
-                        f"[{get_transaction(tid).get('raw_status', get_transaction(tid).get('status', ''))}]"
-                        if get_transaction(tid)
+                        f"{tid} · {tx_index[tid]['sender_name'][:18]} → {tx_index[tid]['beneficiary_name'][:16]} · "
+                        f"{fmt_currency(tx_index[tid]['amount'])} · "
+                        f"Risk: {tx_index[tid].get('method3_score', tx_index[tid].get('risk_score', 0))}/100 "
+                        f"[{tx_index[tid].get('raw_status', tx_index[tid].get('status', ''))}]"
+                        if tid in tx_index
                         else tid
                     ),
                     key="ti_assoc_tx_sel",

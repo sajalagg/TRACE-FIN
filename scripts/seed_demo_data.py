@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 import random
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Ensure workspace root is in sys.path when invoked directly as a script
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import get_db_path
 from app.core.database import get_connection, init_db

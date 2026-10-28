@@ -423,7 +423,7 @@ curl -X GET "http://127.0.0.1:8000/transactions/TX-0391/alert-decision?method=co
   - `POST /verification-requests/{request_id}/respond`
 - **What it does:** Simulates sending a verification prompt to the account holder for a flagged transaction and recording their response:
   - `"approved"` (*"I made this transaction"*): Updates status to `confirmed_legitimate` while preserving all underlying forensic risk evidence.
-  - `"denied"` (*"I did not make this transaction"*): Updates status to `denied_suspicious`, automatically opens an evidence-linked incident in `incidents` + `incident_evidence`, and computes a canonical JSON snapshot + SHA-256 digest (`evidence_sha256`).
+  - `"denied"` (*"I did not make this transaction"*): Updates status to `denied_suspicious` and automatically opens an evidence-linked incident in `incidents` + `incident_evidence`.
 - **Service Called:** [`create_verification_request`](app/services/verification.py) and [`respond_to_verification_request`](app/services/verification.py) (which calls [`create_or_get_incident_for_denial`](app/services/incidents.py)).
 - **Reads/Writes Data:** Writes to `verification_requests` (and `incidents` + `incident_evidence` on denial).
 
@@ -478,7 +478,7 @@ curl -X POST http://127.0.0.1:8000/verification-requests/VER-0001/respond \
   - `PATCH /incidents/{incident_id}`
 - **What it does:** Lists and retrieves forensic incidents created when a user denies a transaction, and allows investigators to update lifecycle status (`open` → `investigating` → `closed`) with audit notes while preserving all linked evidence records.
 - **Service Called:** [`list_incidents`](app/services/incidents.py), [`get_incident_detail`](app/services/incidents.py), [`update_incident_status`](app/services/incidents.py).
-- **Plain-Language Explanation:** When a transaction is denied, an investigator needs one dossier containing the transaction, the sender's OpEx/CapEx/Net-Worth profile, the verification denial, all linked timeline records (`incident_evidence`), advisory next steps (`recommended_actions`), and a live **SHA-256 Tamper-Evident Integrity Check** (`evidence_integrity`) verifying the snapshot captured at escalation time has not been altered.
+- **Plain-Language Explanation:** When a transaction is denied, an investigator needs one dossier containing the transaction, the sender's OpEx/CapEx/Net-Worth profile, the verification denial, all linked timeline records (`incident_evidence`), and advisory next steps (`recommended_actions`).
 
 #### Example `PATCH` Request (`PATCH /incidents/INC-0001`)
 ```bash
@@ -501,19 +501,12 @@ curl -X PATCH http://127.0.0.1:8000/incidents/INC-0001 \
     "status": "investigating",
     "severity": "critical",
     "risk_score_at_creation": 100,
-    "scoring_method_used": "contextual_ti",
-    "evidence_sha256": "8c4e...64_hex_chars"
+    "scoring_method_used": "contextual_ti"
   },
   "recommended_actions": [
     "1. [Advisory Only] Review the user's signed denial statement and contact the account holder out-of-band.",
     "4. [Session Forensics Playbook] Audit authentication logs for the unseen device and impossible-travel IP hop; recommend credential reset in a real environment."
   ],
-  "evidence_integrity": {
-    "stored_sha256": "8c4e...64_hex_chars",
-    "recomputed_sha256": "8c4e...64_hex_chars",
-    "integrity_verified": true,
-    "verification_message": "Verified: Stored forensic snapshot matches its SHA-256 digest."
-  },
   "transaction": {...},
   "user_profile": {...},
   "verification_request": {...},

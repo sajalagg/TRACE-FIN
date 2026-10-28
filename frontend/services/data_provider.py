@@ -5,8 +5,7 @@ Connects exclusively to the FastAPI + SQLite backend over HTTP.
 
 from __future__ import annotations
 
-import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 import streamlit as st
@@ -29,13 +28,14 @@ def _auth_headers() -> Dict[str, str]:
     return {}
 
 
-def _api_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _api_request(method: str, endpoint: str, *, params: Optional[Dict[str, Any]] = None,
+                 payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Single shared HTTP helper for all FastAPI calls; returns `{"ok", "data", "error"}`."""
     url = f"{API_BASE_URL}{endpoint}"
     try:
-        with httpx.Client(timeout=API_TIMEOUT_SECONDS) as client:
-            resp = client.get(url, params=params, headers=_auth_headers())
-            resp.raise_for_status()
-            return {"ok": True, "data": resp.json()}
+        resp = _http_client().request(method, url, params=params, json=payload, headers=_auth_headers())
+        resp.raise_for_status()
+        return {"ok": True, "data": resp.json()}
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text
         try:
@@ -45,60 +45,28 @@ def _api_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str
         return {"ok": False, "error": f"HTTP {exc.response.status_code}: {detail}", "data": None}
     except Exception as exc:
         return {"ok": False, "error": f"Service unavailable at {API_BASE_URL} ({exc})", "data": None}
+
+
+@st.cache_resource(show_spinner=False)
+def _http_client() -> httpx.Client:
+    """Reuse one pooled HTTP connection across Streamlit reruns instead of opening one per call."""
+    return httpx.Client(timeout=API_TIMEOUT_SECONDS)
+
+
+def _api_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    return _api_request("GET", endpoint, params=params)
 
 
 def _api_post(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    url = f"{API_BASE_URL}{endpoint}"
-    try:
-        with httpx.Client(timeout=API_TIMEOUT_SECONDS) as client:
-            resp = client.post(url, json=payload, headers=_auth_headers())
-            resp.raise_for_status()
-            return {"ok": True, "data": resp.json()}
-    except httpx.HTTPStatusError as exc:
-        detail = exc.response.text
-        try:
-            detail = exc.response.json().get("detail", detail)
-        except Exception:
-            pass
-        return {"ok": False, "error": f"HTTP {exc.response.status_code}: {detail}", "data": None}
-    except Exception as exc:
-        return {"ok": False, "error": f"Service unavailable at {API_BASE_URL} ({exc})", "data": None}
+    return _api_request("POST", endpoint, payload=payload)
 
 
 def _api_patch(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    url = f"{API_BASE_URL}{endpoint}"
-    try:
-        with httpx.Client(timeout=API_TIMEOUT_SECONDS) as client:
-            resp = client.patch(url, json=payload, headers=_auth_headers())
-            resp.raise_for_status()
-            return {"ok": True, "data": resp.json()}
-    except httpx.HTTPStatusError as exc:
-        detail = exc.response.text
-        try:
-            detail = exc.response.json().get("detail", detail)
-        except Exception:
-            pass
-        return {"ok": False, "error": f"HTTP {exc.response.status_code}: {detail}", "data": None}
-    except Exception as exc:
-        return {"ok": False, "error": f"Service unavailable at {API_BASE_URL} ({exc})", "data": None}
+    return _api_request("PATCH", endpoint, payload=payload)
 
 
 def _api_put(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    url = f"{API_BASE_URL}{endpoint}"
-    try:
-        with httpx.Client(timeout=API_TIMEOUT_SECONDS) as client:
-            resp = client.put(url, json=payload, headers=_auth_headers())
-            resp.raise_for_status()
-            return {"ok": True, "data": resp.json()}
-    except httpx.HTTPStatusError as exc:
-        detail = exc.response.text
-        try:
-            detail = exc.response.json().get("detail", detail)
-        except Exception:
-            pass
-        return {"ok": False, "error": f"HTTP {exc.response.status_code}: {detail}", "data": None}
-    except Exception as exc:
-        return {"ok": False, "error": f"Service unavailable at {API_BASE_URL} ({exc})", "data": None}
+    return _api_request("PUT", endpoint, payload=payload)
 
 
 def _score_to_level(score: int) -> str:
@@ -115,15 +83,17 @@ def _score_to_level(score: int) -> str:
 # Health & Full Dataset Cache
 # ---------------------------------------------------------------------------
 
+
+@st.cache_data(ttl=15, show_spinner=False)
 def check_backend_health() -> Dict[str, Any]:
-    """Check if the FastAPI backend is reachable (`GET /health`)."""
+    """Check if the FastAPI backend is reachable (`GET /health`), cached briefly to avoid a call per rerun."""
     res = _api_get("/health")
     if res["ok"] and isinstance(res["data"], dict):
         return {"connected": True, "info": res["data"]}
     return {"connected": False, "error": res.get("error", "Backend unreachable")}
 
 
-@st.cache_data(ttl=3, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def _fetch_analytics_dataset_cached() -> Dict[str, Any]:
     res = _api_get("/dashboard/dataset")
     if res["ok"] and isinstance(res["data"], dict):
@@ -146,7 +116,6 @@ def _fetch_analytics_dataset_cached() -> Dict[str, Any]:
         },
         "transactions": [],
         "activity_chart": [],
-        "scenarios": [],
         "_error": res.get("error"),
     }
 
@@ -211,31 +180,22 @@ def get_transactions(filters: Optional[Dict[str, Any]] = None) -> List[Dict[str,
     if max_amt is not None:
         txs = [t for t in txs if t["amount"] <= float(max_amt)]
 
-    scenario_id = filters.get("scenario_id")
-    if scenario_id:
-        txs = [
-            t for t in txs
-            if t.get("scenario_id") == scenario_id or t.get("scenario_label") == scenario_id
-        ]
-
     return txs
+
+
+def get_transaction_index() -> Dict[str, Dict[str, Any]]:
+    """Return `{transaction_id: enriched_tx}` for O(1) lookups (e.g. in selectbox `format_func`)."""
+    return {t["id"]: t for t in get_transactions()}
 
 
 def get_transaction(transaction_id: str) -> Optional[Dict[str, Any]]:
     """Return a single enriched transaction record by ID."""
-    txs = get_transactions()
-    for t in txs:
-        if t["id"] == transaction_id:
-            return t
-    return None
+    return get_transaction_index().get(transaction_id)
 
 
-def get_transaction_detail_full(transaction_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch `GET /transactions/{transaction_id}` directly from FastAPI (includes auth, device, and beneficiary events)."""
-    res = _api_get(f"/transactions/{transaction_id}")
-    if res["ok"] and isinstance(res["data"], dict):
-        return res["data"]
-    return None
+def get_user_transactions(user_id: str) -> List[Dict[str, Any]]:
+    """Return only `user_id`'s enriched transactions (newest first)."""
+    return [t for t in get_transactions() if t.get("sender_id") == user_id]
 
 
 def get_risk_scores(transaction_id: str) -> Optional[Dict[str, Any]]:
@@ -245,7 +205,6 @@ def get_risk_scores(transaction_id: str) -> Optional[Dict[str, Any]]:
         return None
 
     cmp_data = res["data"]
-    tx_enriched = get_transaction(transaction_id) or {}
 
     base = cmp_data["baseline"]
     ctx = cmp_data["contextual"]
@@ -254,26 +213,6 @@ def get_risk_scores(transaction_id: str) -> Optional[Dict[str, Any]]:
     m1_score = int(base["risk_score"])
     m2_score = int(ctx["risk_score"])
     m3_score = int(ti["risk_score"])
-
-    # Build waterfall contribution dictionary
-    contribs = tx_enriched.get("score_contributions") or {}
-    if not contribs:
-        base_map = {r["rule_id"]: int(r["points_awarded"]) for r in base.get("triggered_rules", [])}
-        ctx_map = {r["rule_id"]: int(r["points_awarded"]) for r in ctx.get("triggered_rules", [])}
-        for r in base.get("triggered_rules", []):
-            contribs[f"M1: {r['rule_id']}"] = int(r["points_awarded"])
-        for r_id, b_pts in base_map.items():
-            c_pts = ctx_map.get(r_id, 0)
-            if c_pts < b_pts:
-                contribs[f"CTX_SUPPRESS: {r_id}"] = c_pts - b_pts
-        for r in ctx.get("triggered_rules", []):
-            if r["rule_id"] not in base_map:
-                contribs[f"M2: {r['rule_id']}"] = int(r["points_awarded"])
-            elif int(r["points_awarded"]) > base_map[r["rule_id"]]:
-                contribs[f"M2_BOOST: {r['rule_id']}"] = int(r["points_awarded"]) - base_map[r["rule_id"]]
-        for r in cmp_data.get("ti_added_rules", []):
-            if int(r["points_awarded"]) > 0:
-                contribs[f"M3_TI: {r['rule_id']}"] = int(r["points_awarded"])
 
     # Build counterfactual projection from top triggered contextual/TI rules
     ctx_rules = ctx.get("triggered_rules", [])
@@ -325,7 +264,6 @@ def get_risk_scores(transaction_id: str) -> Optional[Dict[str, Any]]:
         },
         "context_added_rules": cmp_data.get("context_added_rules", []),
         "ti_added_rules": cmp_data.get("ti_added_rules", []),
-        "score_contributions": contribs,
         "counterfactual": {
             "hypothetical_change": ti.get("counterfactual_summary") or ctx.get("counterfactual_summary", ""),
             "projected_method2_score": proj_m2,
@@ -334,39 +272,7 @@ def get_risk_scores(transaction_id: str) -> Optional[Dict[str, Any]]:
         },
         "alert_reasons": alert_reasons,
         "evidence_flags": evidence_flags,
-        "ground_truth": tx_enriched.get("ground_truth", 0),
     }
-
-
-def get_alert_decision(
-    transaction_id: str,
-    method: str = "contextual_ti",
-    override_threshold: Optional[int] = None,
-    override_critical_bypass: Optional[int] = None,
-    override_timezone: Optional[str] = None,
-    override_quiet_hours_enabled: Optional[bool] = None,
-    override_quiet_hours_start: Optional[str] = None,
-    override_quiet_hours_end: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
-    """Call `GET /transactions/{transaction_id}/alert-decision` with optional What-If overrides."""
-    params: Dict[str, Any] = {"method": method}
-    if override_threshold is not None:
-        params["override_threshold"] = override_threshold
-    if override_critical_bypass is not None:
-        params["override_critical_bypass"] = override_critical_bypass
-    if override_timezone is not None:
-        params["override_timezone"] = override_timezone
-    if override_quiet_hours_enabled is not None:
-        params["override_quiet_hours_enabled"] = override_quiet_hours_enabled
-    if override_quiet_hours_start is not None:
-        params["override_quiet_hours_start"] = override_quiet_hours_start
-    if override_quiet_hours_end is not None:
-        params["override_quiet_hours_end"] = override_quiet_hours_end
-
-    res = _api_get(f"/transactions/{transaction_id}/alert-decision", params=params)
-    if res["ok"] and isinstance(res["data"], dict):
-        return res["data"]
-    return None
 
 
 def update_user_preferences_live(user_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -383,12 +289,6 @@ def get_activity_chart_data() -> List[Dict[str, Any]]:
     return dataset.get("activity_chart", [])
 
 
-def get_scenario_summary() -> List[Dict[str, Any]]:
-    """Return the 8 scenario archetypes and their representative SQLite transaction IDs."""
-    dataset = _fetch_analytics_dataset_cached()
-    return dataset.get("scenarios", [])
-
-
 # ---------------------------------------------------------------------------
 # Forensic Evidence Timeline API
 # ---------------------------------------------------------------------------
@@ -402,11 +302,11 @@ KILL_CHAIN_UI_LABELS = {
 }
 
 
-def get_evidence_timeline(transaction_id: str) -> List[Dict[str, Any]]:
-    """Call `GET /transactions/{transaction_id}/timeline` and format chronological forensic events."""
+def get_evidence_timeline(transaction_id: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Call `GET /transactions/{transaction_id}/timeline` once; return `(formatted_events, raw_metadata)`."""
     res = _api_get(f"/transactions/{transaction_id}/timeline")
     if not res["ok"] or not isinstance(res["data"], dict):
-        return []
+        return [], {}
 
     raw_data = res["data"]
     entries = raw_data.get("timeline", [])
@@ -446,15 +346,7 @@ def get_evidence_timeline(transaction_id: str) -> List[Dict[str, Any]]:
                 "source": f"{ev.get('source_table', '')}:{ev.get('source_record_id', '')}",
             }
         )
-    return formatted
-
-
-def get_evidence_timeline_metadata(transaction_id: str) -> Dict[str, Any]:
-    """Return full `TransactionTimelineResponseSchema` metadata (present/missing categories, kill chain phases)."""
-    res = _api_get(f"/transactions/{transaction_id}/timeline")
-    if res["ok"] and isinstance(res["data"], dict):
-        return res["data"]
-    return {}
+    return formatted, raw_data
 
 
 # ---------------------------------------------------------------------------
@@ -501,7 +393,6 @@ def create_threat_indicator(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"success": False, "error": res.get("error", "Failed to register indicator.")}
 
 
-
 # ---------------------------------------------------------------------------
 # Verification & Incident Register API
 # ---------------------------------------------------------------------------
@@ -542,22 +433,19 @@ def get_incidents() -> List[Dict[str, Any]]:
                 "risk_score_at_creation": inc["risk_score_at_creation"],
                 "scoring_method_used": inc["scoring_method_used"],
                 "summary": inc["summary_reason"],
-                "sha256_hash": inc["evidence_sha256"],
-                "_simulated": False,
             }
         )
     return out
 
 
 def get_incident(incident_id: str) -> Optional[Dict[str, Any]]:
-    """Call `GET /incidents/{incident_id}` for full detail, linked evidence, and SHA-256 verification."""
+    """Call `GET /incidents/{incident_id}` for full detail and linked evidence."""
     res = _api_get(f"/incidents/{incident_id}")
     if not res["ok"] or not isinstance(res["data"], dict):
         return None
 
     detail = res["data"]
     inc = detail["incident"]
-    integrity = detail["evidence_integrity"]
     linked_ev = detail.get("linked_evidence", [])
 
     canonical_snapshot = {
@@ -604,9 +492,6 @@ def get_incident(incident_id: str) -> Optional[Dict[str, Any]]:
         "recommended_actions": detail.get("recommended_actions", []),
         "summary": inc["summary_reason"],
         "canonical_snapshot": canonical_snapshot,
-        "sha256_hash": inc["evidence_sha256"],
-        "evidence_integrity": integrity,
-        "_simulated": False,
     }
 
 
@@ -766,7 +651,7 @@ def get_evaluation_metrics(
 
 
 # ---------------------------------------------------------------------------
-# Live Demo Studio API (Create User, Beneficiary, Transaction, Rules Catalog)
+# Users, Beneficiaries & Transactions API
 # ---------------------------------------------------------------------------
 
 def get_users_list() -> List[Dict[str, Any]]:
@@ -775,14 +660,6 @@ def get_users_list() -> List[Dict[str, Any]]:
     if res["ok"] and isinstance(res["data"], list):
         return res["data"]
     return []
-
-
-def create_user_live(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Call `POST /users` to create a new custom user profile in SQLite."""
-    res = _api_post("/users", payload)
-    if res["ok"]:
-        invalidate_dataset_cache()
-    return res
 
 
 def get_user_beneficiaries_list(user_id: str) -> List[Dict[str, Any]]:
@@ -807,14 +684,6 @@ def create_transaction_live(payload: Dict[str, Any]) -> Dict[str, Any]:
     if res["ok"]:
         invalidate_dataset_cache()
     return res
-
-
-def get_rules_catalog() -> List[Dict[str, Any]]:
-    """Call `GET /risk/rules` to fetch the documented rule catalog."""
-    res = _api_get("/risk/rules")
-    if res["ok"] and isinstance(res["data"], list):
-        return res["data"]
-    return []
 
 
 # ---------------------------------------------------------------------------
@@ -842,14 +711,6 @@ def logout_user() -> Dict[str, Any]:
     res = _api_post("/auth/logout", {})
     invalidate_dataset_cache()
     return res
-
-
-def get_current_auth() -> Optional[Dict[str, Any]]:
-    """Return `GET /auth/me` for the currently active session token."""
-    res = _api_get("/auth/me")
-    if res["ok"] and isinstance(res["data"], dict):
-        return res["data"]
-    return None
 
 
 def get_user_sessions(user_id: Optional[str] = None, limit: int = 15) -> List[Dict[str, Any]]:

@@ -99,7 +99,7 @@ def test_dashboard_dataset_and_threat_intel_endpoints(
     ds = ds_res.json()
     assert ds["metrics"]["total_transactions"] == 500
     assert len(ds["transactions"]) == 500
-    assert len(ds["scenarios"]) == 8
+    assert "scenarios" not in ds
     assert len(ds["activity_chart"]) > 0
 
     ti_res = client.get("/threat-intel")

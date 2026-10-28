@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     summary_reason TEXT NOT NULL,
     recommended_actions TEXT NOT NULL,
     evidence_snapshot_json TEXT NOT NULL,
-    evidence_sha256 TEXT NOT NULL,
+    evidence_sha256 TEXT NOT NULL DEFAULT '',
     created_at_utc TEXT NOT NULL,
     updated_at_utc TEXT NOT NULL,
     FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id) ON DELETE CASCADE,
@@ -228,4 +228,9 @@ CREATE INDEX IF NOT EXISTS idx_device_user_time ON device_events(user_id, timest
 CREATE INDEX IF NOT EXISTS idx_ben_user_time ON beneficiary_events(user_id, beneficiary_id, timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_beneficiaries_user ON beneficiaries(user_id, created_at_utc);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_ver_tx ON verification_requests(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_ver_user_status ON verification_requests(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_inc_tx ON incidents(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_inc_user_status ON incidents(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_inc_ev_incident ON incident_evidence(incident_id);
 """

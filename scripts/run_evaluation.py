@@ -3,7 +3,11 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from pathlib import Path
+
+# Ensure workspace root is in sys.path when invoked directly as a script
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import BASE_DIR, get_db_path
 from app.services.evaluation import compute_evaluation_report
