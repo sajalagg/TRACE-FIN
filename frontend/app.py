@@ -55,11 +55,11 @@ if not auth_token or not role:
 elif role == "admin":
     pages = [
         st.Page("pages/1_overview_dashboard.py", title="Admin Dashboard", icon="🏠", default=True),
+        st.Page("pages/2_transaction_explorer.py", title="Transaction Explorer", icon="🔍"),
         st.Page("pages/3_risk_analysis_lab.py", title="Risk Analysis Lab", icon="⚗️"),
-        st.Page("pages/4_forensic_investigation.py", title="Forensic Timeline & Verify", icon="🔬"),
-        st.Page("pages/2_transaction_explorer.py", title="Transaction Investigations", icon="🔍"),
+        st.Page("pages/4_forensic_investigation.py", title="Forensic Investigation", icon="🔬"),
         st.Page("pages/5_threat_intelligence.py", title="Threat Intelligence", icon="🕵️"),
-        st.Page("pages/6_incident_register_evaluation.py", title="Incidents & Evaluation", icon="📋"),
+        st.Page("pages/6_incident_register_evaluation.py", title="Model Evaluation", icon="📊"),
     ]
 else:
     pages = [

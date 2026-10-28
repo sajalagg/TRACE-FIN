@@ -968,6 +968,20 @@ class AdminDecisionResponseSchema(BaseModel):
     linked_incident_id: Optional[str] = None
 
 
+class ThreatIndicatorCreateSchema(BaseModel):
+    """Request body for registering a new threat-intelligence indicator (`POST /threat-intel`)."""
+
+    indicator: str = Field(min_length=3, max_length=128, description="IP address or beneficiary account ID")
+    indicator_type: str = Field(default="ip_address", description="'ip_address' or 'beneficiary_account'")
+    source_label: str = Field(default="Internal Forensic Escalation", description="Originating feed or source")
+    threat_category: str = Field(default="bulletproof_hosting_vpn", description="Threat category or campaign")
+    confidence_level: str = Field(default="high", description="'high', 'medium', or 'low'")
+    expires_at_utc: Optional[str] = Field(default=None, description="ISO UTC expiration date string")
+    expires_in_days: int = Field(default=90, description="Validity window in days")
+    description: str = Field(default="", description="Investigator rationale or feed description")
+
+
+
 
 
 

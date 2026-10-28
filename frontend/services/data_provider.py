@@ -492,6 +492,16 @@ def get_threat_indicators(filters: Optional[Dict[str, Any]] = None) -> List[Dict
     return indicators
 
 
+def create_threat_indicator(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Call `POST /threat-intel` to add a new indicator to the SQLite registry."""
+    res = _api_post("/threat-intel", payload)
+    if res["ok"] and isinstance(res["data"], dict):
+        invalidate_dataset_cache()
+        return {"success": True, "data": res["data"]}
+    return {"success": False, "error": res.get("error", "Failed to register indicator.")}
+
+
+
 # ---------------------------------------------------------------------------
 # Verification & Incident Register API
 # ---------------------------------------------------------------------------
