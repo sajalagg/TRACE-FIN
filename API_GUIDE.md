@@ -8,8 +8,8 @@ Interactive OpenAPI/Swagger documentation is also automatically available at `ht
 
 ## HTTP Client Choice: Why `httpx`?
 We chose **HTTPX** (`httpx`) for frontend-to-backend HTTP requests because:
-1. FastAPI's built-in `TestClient` uses `httpx` under the hood, meaning one library covers both our test suite and our Streamlit API client.
-2. It provides a clean, `requests`-compatible API with strict default timeouts and connection pooling.
+1. It provides modern asynchronous and synchronous HTTP support with strict default timeouts, connection pooling, and resilient keep-alive connection reuse across Streamlit reruns.
+2. It provides a clean, `requests`-compatible API with typed response handling and comprehensive error inspection.
 
 ---
 

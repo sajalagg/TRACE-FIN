@@ -132,48 +132,65 @@ reason:
 ``` text
 trace-fin/
 ├── README.md
-├── PROJECT_GUIDE.md
+├── README.md
+├── API_GUIDE.md
+├── TRACE-Fin_PROJECT_GUIDE.md
 ├── requirements.txt
-├── .env.example
 ├── data/
 │   └── README.md
 ├── scripts/
-│   └── seed_demo_data.py
+│   ├── seed_demo_data.py
+│   └── run_evaluation.py
 ├── app/
 │   ├── main.py
 │   ├── api/
+│   │   ├── deps.py
+│   │   ├── routes_auth.py
 │   │   ├── routes_health.py
 │   │   ├── routes_transactions.py
 │   │   ├── routes_preferences.py
 │   │   ├── routes_verification.py
-│   │   └── routes_incidents.py
+│   │   ├── routes_incidents.py
+│   │   └── routes_evaluation.py
 │   ├── core/
 │   │   ├── config.py
-│   │   └── database.py
+│   │   ├── database.py
+│   │   ├── policy.py
+│   │   └── security.py
 │   ├── models/
 │   │   └── database_models.py
 │   ├── schemas/
 │   │   └── api_schemas.py
-│   ├── services/
-│   │   ├── scoring.py
-│   │   ├── evidence.py
-│   │   ├── alert_policy.py
-│   │   ├── verification.py
-│   │   └── incidents.py
-│   └── ui/
-│       ├── Home.py
-│       └── pages/
-│           ├── 1_Investigate_Transaction.py
-│           ├── 2_Verification_Centre.py
-│           ├── 3_Incident_Register.py
-│           ├── 4_Alert_Preferences.py
-│           └── 5_Evaluation.py
-└── tests/
-    ├── test_health.py
-    ├── test_scoring.py
-    ├── test_alert_policy.py
-    ├── test_verification.py
-    └── test_incidents.py
+│   └── services/
+│       ├── auth.py
+│       ├── alert_policy.py
+│       ├── evaluation.py
+│       ├── evidence.py
+│       ├── incidents.py
+│       ├── scoring.py
+│       ├── transactions.py
+│       └── verification.py
+└── frontend/
+    ├── app.py
+    ├── services/
+    │   ├── config.py
+    │   └── data_provider.py
+    ├── ui/
+    │   └── components.py
+    └── pages/
+        ├── 0_landing_auth.py
+        ├── 1_overview_dashboard.py
+        ├── 2_transaction_explorer.py
+        ├── 3_risk_analysis_lab.py
+        ├── 4_forensic_investigation.py
+        ├── 5_threat_intelligence.py
+        ├── 6_incident_register_evaluation.py
+        ├── c1_customer_dashboard.py
+        ├── c2_customer_beneficiaries.py
+        ├── c3_customer_transfer.py
+        ├── c4_customer_transactions.py
+        ├── c5_customer_security_alerts.py
+        └── c6_customer_profile_preferences.py
 ```
 
 This is a suggested structure, not a requirement to create every file

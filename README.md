@@ -68,13 +68,10 @@ source .venv/bin/activate
 # 2. (Optional) Re-seed the deterministic synthetic database (12 customers, 1 admin, 500 transactions)
 .venv/bin/python -m scripts.seed_demo_data
 
-# 3. Run the full automated test suite (43 tests)
-.venv/bin/pytest -v
-
-# 4. Start the backend server (Terminal 1)
+# 3. Start the backend server (Terminal 1)
 .venv/bin/uvicorn app.main:app --reload --port 8000
 
-# 5. Launch the TRACE-Fin web application (Terminal 2)
+# 4. Launch the TRACE-Fin web application (Terminal 2)
 .venv/bin/streamlit run frontend/app.py
 ```
 
@@ -86,9 +83,9 @@ Once running:
 ---
 
 ## Project Structure
-- [app/main.py](file:///Users/apple/Desktop/TRACE-FIN/app/main.py) & [app/api/](file:///Users/apple/Desktop/TRACE-FIN/app/api) — REST API routes (`routes_auth.py`, `routes_transactions.py`, `routes_verification.py`, `routes_incidents.py`, `routes_preferences.py`, `routes_evaluation.py`) and ownership guards (`deps.py`)
+- [app/main.py](file:///Users/apple/Desktop/TRACE-FIN/app/main.py) & [app/api/](file:///Users/apple/Desktop/TRACE-FIN/app/api) — FastAPI REST API routes (`routes_auth.py`, `routes_transactions.py`, `routes_verification.py`, `routes_incidents.py`, `routes_preferences.py`, `routes_evaluation.py`) and ownership guards (`deps.py`)
 - [app/core/](file:///Users/apple/Desktop/TRACE-FIN/app/core) — Central transfer policy (`policy.py`), `PBKDF2-HMAC-SHA256` password/token security (`security.py`), and database initialization (`database.py`)
-- [app/services/](file:///Users/apple/Desktop/TRACE-FIN/app/services) — Authentication & Session Network Intelligence (`auth.py`), 3-method risk scoring (`scoring.py`), transactions (`transactions.py`), verification & Admin release (`verification.py`), SHA-256 incidents (`incidents.py`), and evaluation (`evaluation.py`)
+- [app/services/](file:///Users/apple/Desktop/TRACE-FIN/app/services) — Authentication & Session Network Intelligence (`auth.py`), 3-method risk scoring (`scoring.py`), transactions (`transactions.py`), verification & Admin release (`verification.py`), forensic incidents (`incidents.py`), and evaluation (`evaluation.py`)
 - [frontend/app.py](file:///Users/apple/Desktop/TRACE-FIN/frontend/app.py) & [frontend/pages/](file:///Users/apple/Desktop/TRACE-FIN/frontend/pages) — Public landing page (`0_landing_auth.py`), 6 Customer Digital Banking pages (`c1_..c6_*.py`), and 6 Admin SOC pages (`1_..6_*.py`)
 - [scripts/](file:///Users/apple/Desktop/TRACE-FIN/scripts) — Deterministic dataset seeder (`seed_demo_data.py`) and CLI evaluation exporter (`run_evaluation.py`)
-- [tests/](file:///Users/apple/Desktop/TRACE-FIN/tests) — Automated `pytest` suite (`43 passed`)
+- [data/](file:///Users/apple/Desktop/TRACE-FIN/data) — Local SQLite storage (`trace_fin.db`) and evaluation export outputs

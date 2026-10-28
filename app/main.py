@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,6 +15,14 @@ from app.api.routes_transactions import router as transactions_router
 from app.api.routes_verification import router as verification_router
 from app.core.database import init_db
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Bring existing databases up to the current schema (idempotent) before serving requests."""
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="TRACE-Fin API",
     description=(
@@ -19,6 +30,7 @@ app = FastAPI(
         "Verification and Incident Response (synthetic data only)."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Enable CORS so any frontend (React, Vite, Next.js, or Streamlit) can call the API
@@ -37,9 +49,3 @@ app.include_router(preferences_router)
 app.include_router(verification_router)
 app.include_router(incidents_router)
 app.include_router(evaluation_router)
-
-
-@app.on_event("startup")
-def _apply_database_migrations() -> None:
-    """Bring existing databases up to the current schema (idempotent) before serving requests."""
-    init_db()
