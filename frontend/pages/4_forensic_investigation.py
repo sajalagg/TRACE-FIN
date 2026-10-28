@@ -14,11 +14,10 @@ import streamlit as st
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from services.data_provider import (
+    get_transaction_index,
     get_evidence_timeline,
-    get_evidence_timeline_metadata,
     get_incidents,
     get_risk_scores,
-    get_transaction,
     get_transactions,
     update_incident_status_live,
     verify_transaction,
@@ -44,6 +43,7 @@ st.divider()
 
 # ── Transaction Selector (Supports ALL SQLite Transactions) ───────────────
 all_txs = get_transactions()
+tx_index = get_transaction_index()
 all_tx_ids = [t["id"] for t in all_txs]
 
 default_tx = st.session_state.get("selected_tx_id", all_tx_ids[0] if all_tx_ids else "TX-0391")
@@ -61,12 +61,14 @@ selected_case = st.selectbox(
     options=all_tx_ids,
     index=default_idx,
     format_func=lambda tid: (
-        f"{'⚡ LIVE · ' if get_transaction(tid).get('is_live_created') else ''}"
-        f"{tid} · {get_transaction(tid)['sender_name'][:20]} → "
-        f"{get_transaction(tid)['beneficiary_name'][:18]} · "
-        f"{fmt_currency(get_transaction(tid)['amount'])} · "
-        f"Risk Score: {get_transaction(tid).get('method3_score', get_transaction(tid).get('risk_score', 0))}/100 · "
-        f"[{get_transaction(tid).get('raw_status', get_transaction(tid).get('status', ''))}]"
+        f"{'⚡ LIVE · ' if tx_index[tid].get('is_live_created') else ''}"
+        f"{tid} · {tx_index[tid]['sender_name'][:20]} → "
+        f"{tx_index[tid]['beneficiary_name'][:18]} · "
+        f"{fmt_currency(tx_index[tid]['amount'])} · "
+        f"Risk Score: {tx_index[tid].get('method3_score', tx_index[tid].get('risk_score', 0))}/100 · "
+        f"[{tx_index[tid].get('raw_status', tx_index[tid].get('status', ''))}]"
+        if tid in tx_index
+        else str(tid)
     ),
     key="forensic_tx_select",
     on_change=_on_for_tx_change,
@@ -74,10 +76,9 @@ selected_case = st.selectbox(
 
 st.session_state["selected_tx_id"] = selected_case
 
-tx = get_transaction(selected_case)
+tx = tx_index.get(selected_case)
 scores = get_risk_scores(selected_case)
-events = get_evidence_timeline(selected_case)
-tl_meta = get_evidence_timeline_metadata(selected_case)
+events, tl_meta = get_evidence_timeline(selected_case)
 
 if not tx or not scores:
     st.error(f"Transaction '{selected_case}' not found.")

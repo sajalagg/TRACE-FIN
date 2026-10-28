@@ -28,7 +28,7 @@ def get_dashboard_summary_endpoint() -> DashboardSummarySchema:
 
 @router.get("/dashboard/dataset", response_model=Dict[str, Any])
 def get_dashboard_dataset_endpoint() -> Dict[str, Any]:
-    """Return full enriched transaction dataset, 3-method scores, KPIs, scenarios, and activity series from SQLite."""
+    """Return full enriched transaction dataset, 3-method scores, KPIs, and activity series from SQLite."""
     return get_full_analytics_dataset()
 
 

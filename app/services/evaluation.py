@@ -101,7 +101,9 @@ def compute_evaluation_report(
         scored_records: List[Dict[str, Any]] = []
         for tx in tx_rows:
             uid = tx["user_id"]
-            u_row = users_by_id[uid]
+            u_row = users_by_id.get(uid)
+            if u_row is None:
+                continue
             u_thresh = prefs_by_id.get(uid, 60)
 
             base_rules = _evaluate_baseline_rules(conn, tx)
@@ -335,64 +337,6 @@ PROFILE_DISPLAY_LABELS: Dict[str, str] = {
     "HNI individuals": "HNI Individuals",
 }
 
-SCENARIO_METADATA: Dict[str, Dict[str, str]] = {
-    "legitimate_capex_high_value": {
-        "code": "SCEN-01",
-        "name": "Enterprise CapEx Equipment Purchase",
-        "type": "Legitimate",
-        "headline": "High-value industrial machinery wire (₹35k–₹115k) to an established B2B supplier during business hours.",
-        "key_lesson": "Transaction-only rules flag the large rupee amount (False Positive), while Contextual Scoring verifies CapEx profile + supply-chain vendor affinity.",
-    },
-    "legitimate_opex_payroll_cycle": {
-        "code": "SCEN-02",
-        "name": "Month-End OpEx & Payroll Settlement",
-        "type": "Legitimate",
-        "headline": "Scheduled month-end (25th–5th) batch payroll or wholesale inventory settlement by an OpEx SME.",
-        "key_lesson": "Cash-flow calendar awareness suppresses false positives on recurring month-end operational spikes.",
-    },
-    "legitimate_travel_new_ip": {
-        "code": "SCEN-03",
-        "name": "Authorized Travel with Known Device",
-        "type": "Legitimate",
-        "headline": "Routine transfer from a new roaming IP address, but authenticated cleanly on the user's primary registered device.",
-        "key_lesson": "Correlating device continuity prevents flagging legitimate traveling users who change IP subnets.",
-    },
-    "low_and_slow_ato": {
-        "code": "SCEN-04",
-        "name": "Low-and-Slow Account Takeover (ATO)",
-        "type": "Attack",
-        "headline": "Sub-threshold transfer preceded by credential-stuffing failures, an unseen device, impossible travel, and a newly added beneficiary.",
-        "key_lesson": "Evades static rupee thresholds, but Contextual Scoring correlates the full kill-chain (Recon -> Initial Access -> Preparation -> Exfiltration).",
-    },
-    "b2b_vendor_bec_tamper": {
-        "code": "SCEN-05",
-        "name": "B2B Vendor BEC Bank Account Tamper",
-        "type": "Attack",
-        "headline": "Corporate invoice payment to a trusted vendor whose bank account/IBAN was modified minutes before the wire.",
-        "key_lesson": "Detects Business Email Compromise (BEC) by correlating beneficiary bank-modification events with subsequent high-value wires.",
-    },
-    "structured_smurfing_drain": {
-        "code": "SCEN-06",
-        "name": "Structured Smurfing / 24h Cumulative Drain",
-        "type": "Attack",
-        "headline": "Rapid burst of split transfers individually below the user's single-transaction max, but cumulatively draining turnover.",
-        "key_lesson": "Rolling 24-hour velocity and cumulative turnover ratio catch split-transfer structuring missed by single-tx checks.",
-    },
-    "threat_intel_active_or_stale_ip": {
-        "code": "SCEN-07",
-        "name": "Threat Intelligence Indicator Match (Fresh vs Expired)",
-        "type": "Attack",
-        "headline": "Transactions originating from known Tor/Botnet C2 IPs or flagged mule accounts vs expired historical indicators.",
-        "key_lesson": "Demonstrates freshness-aware TI gating: active indicators boost Method 3 scores while expired indicators contribute 0 points.",
-    },
-    "normal_routine": {
-        "code": "SCEN-08",
-        "name": "Routine Baseline Activity",
-        "type": "Legitimate",
-        "headline": "Everyday personal and business transfers within expected amount bands, operating hours, and established counterparties.",
-        "key_lesson": "Establishes low-noise normal behavior across Individual, OpEx, and CapEx accounts.",
-    },
-}
 
 
 def _score_to_ui_level(score: int) -> str:
@@ -406,7 +350,7 @@ def _score_to_ui_level(score: int) -> str:
 
 
 def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Return all SQLite transactions enriched with 3-method scores, KPIs, scenarios, and activity series."""
+    """Return all SQLite transactions enriched with 3-method scores, KPIs, and activity series."""
     with get_connection(db_path) as conn:
         user_rows = conn.execute("SELECT * FROM users;").fetchall()
         users_by_id = {u["user_id"]: u for u in user_rows}
@@ -432,17 +376,15 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
         ).fetchall()
 
         enriched_txs: List[Dict[str, Any]] = []
-        representative_by_scenario: Dict[str, str] = {}
-        scenario_counts: Dict[str, int] = {}
 
         for tx in tx_rows:
             tx_id = tx["transaction_id"]
             uid = tx["user_id"]
-            u_row = users_by_id[uid]
+            u_row = users_by_id.get(uid)
+            if u_row is None:
+                continue
             u_thresh = prefs_by_id.get(uid, 60)
             scen_label = tx["scenario_label"]
-
-            scenario_counts[scen_label] = scenario_counts.get(scen_label, 0) + 1
 
             base_rules = _evaluate_baseline_rules(conn, tx)
             ctx_rules = _evaluate_contextual_rules(conn, tx, u_row)
@@ -455,14 +397,6 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
             m1_level = _score_to_ui_level(m1_score)
             m2_level = _score_to_ui_level(m2_score)
             m3_level = _score_to_ui_level(m3_score)
-
-            # Pick the clearest representative transaction for each scenario
-            if scen_label not in representative_by_scenario:
-                representative_by_scenario[scen_label] = tx_id
-            elif scen_label == "legitimate_capex_high_value" and m1_score >= 60 and m2_score < 30:
-                representative_by_scenario[scen_label] = tx_id
-            elif scen_label == "threat_intel_active_or_stale_ip" and m3_score > m2_score:
-                representative_by_scenario[scen_label] = tx_id
 
             tx_keys = tx.keys()
             raw_status = str(tx["status"]) if "status" in tx_keys and tx["status"] else "COMPLETED"
@@ -504,28 +438,6 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
             all_active_rules = [*ctx_rules, *ti_rules]
             evidence_flags = [r.rule_id for r in all_active_rules]
             alert_reasons = [r.explanation for r in all_active_rules]
-
-            # Build waterfall contribution dictionary showing Baseline rules + Contextual deltas + TI deltas
-            contribs: Dict[str, int] = {}
-            base_map = {r.rule_id: r.points_awarded for r in base_rules}
-            ctx_map = {r.rule_id: r.points_awarded for r in ctx_rules}
-            for r in base_rules:
-                contribs[f"M1: {r.rule_id}"] = r.points_awarded
-            # Contextual suppressions (baseline rules suppressed by context)
-            for r_id, b_pts in base_map.items():
-                c_pts = ctx_map.get(r_id, 0)
-                if c_pts < b_pts:
-                    contribs[f"CTX_SUPPRESS: {r_id}"] = c_pts - b_pts
-            # Contextual additions
-            for r in ctx_rules:
-                if r.rule_id not in base_map:
-                    contribs[f"M2: {r.rule_id}"] = r.points_awarded
-                elif r.points_awarded > base_map[r.rule_id]:
-                    contribs[f"M2_BOOST: {r.rule_id}"] = r.points_awarded - base_map[r.rule_id]
-            # TI additions
-            for r in ti_rules:
-                if r.points_awarded > 0:
-                    contribs[f"M3_TI: {r.rule_id}"] = r.points_awarded
 
             if not alert_reasons:
                 alert_reasons = [
@@ -576,11 +488,9 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
                     "method3_level": m3_level,
                     "ground_truth": int(tx["is_suspicious"]),
                     "scenario_label": scen_label,
-                    "scenario_id": SCENARIO_METADATA.get(scen_label, {}).get("code", "LIVE-TX" if scen_label == "live_custom_demo" else scen_label),
                     "is_live_created": scen_label == "live_custom_demo",
                     "evidence_flags": evidence_flags,
                     "alert_reasons": alert_reasons,
-                    "score_contributions": contribs,
                 }
             )
 
@@ -611,22 +521,6 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
         for day_key, scores_list in sorted(by_day.items())
     ]
 
-    scenarios_out: List[Dict[str, Any]] = []
-    for scen_key, meta in SCENARIO_METADATA.items():
-        if scen_key in scenario_counts:
-            scenarios_out.append(
-                {
-                    "id": meta["code"],
-                    "scenario_label": scen_key,
-                    "name": meta["name"],
-                    "type": meta["type"],
-                    "tx_id": representative_by_scenario.get(scen_key, "TX-0001"),
-                    "count": scenario_counts[scen_key],
-                    "headline": meta["headline"],
-                    "key_lesson": meta["key_lesson"],
-                }
-            )
-
     min_date = min((t["timestamp"][:10] for t in enriched_txs), default="2026-03-01")
     max_date = max((t["timestamp"][:10] for t in enriched_txs), default="2026-03-30")
 
@@ -650,7 +544,6 @@ def get_full_analytics_dataset(db_path: Optional[Path] = None) -> Dict[str, Any]
         },
         "transactions": enriched_txs,
         "activity_chart": activity_series,
-        "scenarios": scenarios_out,
     }
 
 

@@ -1,7 +1,7 @@
 """
 TRACE-Fin UI Components Library.
 Shared reusable components: badges, KPI cards, financial profile calibration cards,
-kill-chain progress ribbon, chart templates, timeline renderer, and executive SOC CSS.
+chart templates, and executive SOC CSS.
 """
 
 from __future__ import annotations
@@ -50,16 +50,6 @@ RISK_COLOR_MAP = {
     "critical": "#DC2626",
 }
 
-STATUS_COLOR_MAP = {
-    "Settled": "#10B981",
-    "Pending Review": "#F59E0B",
-    "Flagged": "#EF4444",
-    "Blocked": "#DC2626",
-    "In Review": "#F59E0B",
-    "Escalated": "#DC2626",
-    "Open": "#EF4444",
-    "Closed": "#10B981",
-}
 
 EXPENDITURE_BADGE_MAP = {
     "capex_heavy": ("CapEx Enterprise", "#8B5CF6"),
@@ -231,55 +221,6 @@ h3 { color: #CBD5E1 !important; font-weight: 600; font-size: 1.05rem !important;
     border-bottom: 1px solid #223342;
 }
 
-/* ── Score Display ─────────────────────────────────────────────────────  */
-.score-card {
-    background: linear-gradient(160deg, #13212E 0%, #0E1720 100%);
-    border: 1px solid #223342;
-    border-radius: 10px;
-    padding: 20px;
-    text-align: center;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
-}
-.score-value {
-    font-size: 3.3rem;
-    font-weight: 700;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-}
-.score-method {
-    font-size: 0.72rem;
-    color: #CBD5E1;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    margin-top: 8px;
-}
-
-/* ── Demo Banner ──────────────────────────────────────────────────────── */
-.demo-banner {
-    background: linear-gradient(90deg, #0A2239 0%, #091B2E 100%);
-    border: 1px solid #21D4C23A;
-    border-radius: 7px;
-    padding: 7px 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    font-size: 0.73rem;
-    color: #67E8F9;
-    font-weight: 500;
-    letter-spacing: 0.03em;
-    margin-bottom: 14px;
-}
-.demo-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: #10B981;
-    box-shadow: 0 0 8px #10B981;
-    display: inline-block;
-    margin-right: 7px;
-}
-
 /* ── Dividers & Widgets ───────────────────────────────────────────────── */
 hr { border-color: #1E2D3B !important; margin: 16px 0 !important; }
 
@@ -307,21 +248,6 @@ hr { border-color: #1E2D3B !important; margin: 16px 0 !important; }
     background: #0B2236;
 }
 
-/* ── Scenario Cards ───────────────────────────────────────────────────── */
-.scenario-card {
-    background: linear-gradient(145deg, #111D28 0%, #0D161F 100%);
-    border: 1px solid #223342;
-    border-radius: 8px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
-    transition: border-color 0.2s;
-}
-.scenario-card:hover { border-color: #21D4C255; }
-.scenario-card.attack { border-left: 3.5px solid #EF4444; }
-.scenario-card.legitimate { border-left: 3.5px solid #10B981; }
-.scenario-title { font-size: 0.86rem; font-weight: 600; color: #F1F5F9; margin-bottom: 4px; }
-.scenario-headline { font-size: 0.76rem; color: #94A3B8; margin-bottom: 6px; line-height: 1.4; }
-.scenario-lesson { font-size: 0.73rem; color: #67E8F9; line-height: 1.4; }
 </style>
 """
 
@@ -358,10 +284,6 @@ def fmt_currency(amount: float, currency: str = "INR") -> str:
         return f"₹{_indian_group(whole)}"
     paise = f"{abs(amount) % 1:.2f}"[1:]
     return f"₹{_indian_group(whole)}{paise}"
-
-
-def fmt_score(score: int) -> str:
-    return f"{score}/100"
 
 
 def fmt_ts(ts: str) -> str:
@@ -457,19 +379,8 @@ def render_kpi_row(metrics: List[Dict[str, Any]]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Demo Environment Banner & Financial Calibration Card
+# Customer Explainer & Financial Calibration Card
 # ---------------------------------------------------------------------------
-
-def render_demo_banner() -> None:
-    st.markdown(
-        '<div class="demo-banner">'
-        '<div><span class="demo-dot"></span>'
-        '<b>DIGITAL BANKING &amp; FORENSIC RISK PROTECTION</b> · '
-        'Risk scores (0–100) are explainable rule-based indicators, not probabilities</div>'
-        '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:#21D4C2">TRACE-Fin Protection Active</span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
 
 
 def render_two_line_customer_explainer(
@@ -612,24 +523,6 @@ border-radius:10px;padding:16px 20px;margin-bottom:16px">
 
 
 # ---------------------------------------------------------------------------
-# Score Cards
-# ---------------------------------------------------------------------------
-
-def render_score_card(method_name: str, score: int, level: str, description: str = "") -> None:
-    color = RISK_COLOR_MAP.get(level, "#8A9CB0")
-    st.markdown(
-        f"""
-<div class="score-card">
-  <div class="score-value" style="color:{color}">{score}</div>
-  <div style="margin-top:6px">{risk_badge_html(level)}</div>
-  <div class="score-method">{method_name}</div>
-  {f'<div style="font-size:0.74rem;color:#8A9CB0;margin-top:10px;line-height:1.45">{description}</div>' if description else ''}
-</div>""",
-        unsafe_allow_html=True,
-    )
-
-
-# ---------------------------------------------------------------------------
 # Plotly chart theme helper
 # ---------------------------------------------------------------------------
 
@@ -684,81 +577,6 @@ def build_risk_distribution_chart(txs: List[Dict[str, Any]]) -> go.Figure:
     return fig
 
 
-def build_score_comparison_chart(scores: Dict[str, Any], threshold: int = 60) -> go.Figure:
-    """Horizontal bar chart comparing three method scores for a single transaction."""
-    methods = ["M1: Transaction-Only", "M2: Contextual Forensic", "M3: Contextual + TI"]
-    values = [
-        scores.get("method1", {}).get("score", 0),
-        scores.get("method2", {}).get("score", 0),
-        scores.get("method3", {}).get("score", 0),
-    ]
-    bar_colors = [
-        RISK_COLOR_MAP.get(scores.get(f"method{i + 1}", {}).get("level", "Low"), "#8A9CB0")
-        for i in range(3)
-    ]
-
-    fig = go.Figure(
-        go.Bar(
-            y=methods,
-            x=values,
-            orientation="h",
-            marker_color=bar_colors,
-            text=[f"{v}/100" for v in values],
-            textposition="outside",
-            textfont=dict(color=COLORS["text_primary"], size=12, family="Inter"),
-            hovertemplate="<b>%{y}</b><br>Score: %{x}/100<extra></extra>",
-        )
-    )
-
-    fig.add_vline(
-        x=threshold,
-        line_dash="dash",
-        line_color="#F59E0B",
-        annotation_text=f"User Alert Threshold ({threshold})",
-        annotation_font_color="#F59E0B",
-        annotation_font_size=10,
-    )
-
-    layout = plotly_layout_defaults("3-Method Heuristic Score Comparison", height=250)
-    layout["xaxis"]["range"] = [0, 112]
-    layout["xaxis"]["title"] = "Heuristic Risk Score (0–100)"
-    layout["yaxis"]["title"] = ""
-    layout["margin"]["l"] = 165
-    fig.update_layout(**layout)
-    return fig
-
-
-def build_waterfall_chart(contributions: Dict[str, int]) -> go.Figure:
-    labels = list(contributions.keys())
-    values = list(contributions.values())
-
-    fig = go.Figure(
-        go.Waterfall(
-            name="Score",
-            orientation="v",
-            measure=["relative"] * len(labels) + ["total"],
-            x=labels + ["Uncapped Sum"],
-            y=values + [None],
-            connector=dict(line=dict(color="#223342", width=1)),
-            decreasing=dict(marker_color="#10B981"),
-            increasing=dict(marker_color="#EF4444"),
-            totals=dict(marker_color="#21D4C2"),
-            textposition="outside",
-            text=[f"+{v}" if v > 0 else str(v) for v in values] + [f"{sum(values)}"],
-            textfont=dict(family="Inter", size=10, color=COLORS["text_primary"]),
-            hovertemplate="<b>%{x}</b><br>Points Delta: %{y:+d}<extra></extra>",
-        )
-    )
-
-    layout = plotly_layout_defaults("Rule Contribution & Contextual Suppression Waterfall", height=320)
-    layout["xaxis"]["tickangle"] = -25
-    layout["xaxis"]["tickfont"] = dict(size=9)
-    max_y = max([sum(v for v in values if v > 0), abs(sum(values)), 40])
-    layout["yaxis"]["range"] = [min(0, min(values + [0]) - 15), max_y * 1.22]
-    fig.update_layout(**layout)
-    return fig
-
-
 def build_activity_chart(data: List[Dict[str, Any]]) -> go.Figure:
     if not data:
         return go.Figure()
@@ -785,134 +603,6 @@ def build_activity_chart(data: List[Dict[str, Any]]) -> go.Figure:
     layout["xaxis"]["title"] = "Date (UTC)"
     fig.update_layout(**layout)
     return fig
-
-
-# ---------------------------------------------------------------------------
-# Kill-Chain Ribbon & Evidence Timeline
-# ---------------------------------------------------------------------------
-
-PHASE_COLORS = {
-    "Recon / Brute-Force": "#DC2626",
-    "Initial Access": "#EF4444",
-    "Preparation / Persistence": "#F59E0B",
-    "Exfiltration Execution": "#DC2626",
-    "Normal Activity": "#10B981",
-}
-
-SEVERITY_DOT_COLORS = {
-    "Critical": "#DC2626",
-    "High": "#EF4444",
-    "Medium": "#F59E0B",
-    "Low": "#10B981",
-}
-
-
-def render_kill_chain_ribbon(events: List[Dict[str, Any]]) -> None:
-    """Render a visual DFIR Kill-Chain stage indicator bar highlighting active phases in the timeline."""
-    observed = {ev.get("phase", "") for ev in events}
-    stages = [
-        ("1. Recon / Brute-Force", "Recon / Brute-Force", "#DC2626"),
-        ("2. Initial Access", "Initial Access", "#EF4444"),
-        ("3. Preparation / Persistence", "Preparation / Persistence", "#F59E0B"),
-        ("4. Exfiltration Execution", "Exfiltration Execution", "#DC2626"),
-    ]
-
-    pills_html = ""
-    for title, key, active_color in stages:
-        is_active = key in observed
-        bg = f"{active_color}28" if is_active else "#0E1720"
-        border = active_color if is_active else "#223342"
-        txt_col = "#F8FAFC" if is_active else "#64748B"
-        status_dot = f'<span style="color:{active_color};margin-right:5px">●</span>' if is_active else '<span style="color:#475569;margin-right:5px">○</span>'
-        pills_html += (
-            f'<div style="flex:1;min-width:150px;background:{bg};border:1px solid {border};'
-            f'border-radius:7px;padding:8px 12px;text-align:center;font-size:0.73rem;font-weight:600;color:{txt_col}">'
-            f'{status_dot}{title}</div>'
-        )
-
-    st.markdown(
-        f'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">{pills_html}</div>',
-        unsafe_allow_html=True,
-    )
-
-
-def render_timeline(events: List[Dict[str, Any]]) -> None:
-    if not events:
-        st.info("No evidence timeline records found for this transaction.")
-        return
-
-    render_kill_chain_ribbon(events)
-
-    for idx, ev in enumerate(events):
-        phase = ev.get("phase", "Normal Activity")
-        severity = ev.get("severity", "Low")
-        dot_color = SEVERITY_DOT_COLORS.get(severity, "#8A9CB0")
-        phase_color = PHASE_COLORS.get(phase, "#8A9CB0")
-        is_last = idx == len(events) - 1
-
-        connector = "" if is_last else '<div class="timeline-connector"></div>'
-        phase_html = (
-            f'<span class="timeline-phase" style="background:{phase_color}22;color:{phase_color};'
-            f'border:1px solid {phase_color}55">{phase}</span>'
-        )
-
-        recorded_fact = ev.get("recorded_fact") or ev.get("description", "")
-        system_interp = ev.get("system_interpretation", "")
-        interp_html = (
-            f'<div class="timeline-interp"><b>Forensic Inference:</b> {system_interp}</div>'
-            if system_interp
-            else ""
-        )
-
-        st.markdown(
-            f"""
-<div class="timeline-event">
-  <div style="position:relative;width:12px">
-    <div class="timeline-dot" style="color:{dot_color};background:{dot_color}"></div>
-    {connector}
-  </div>
-  <div class="timeline-content">
-    <div class="timeline-header">
-      <span class="timeline-time">{ev.get("timestamp","")}</span>
-      <span class="timeline-type">{ev.get("event_type","")}</span>
-      {phase_html}
-      <span class="badge badge-{severity.lower()}">{severity}</span>
-    </div>
-    <div class="timeline-fact"><b>Recorded Telemetry:</b> {recorded_fact}</div>
-    {interp_html}
-    <div class="timeline-entity">Context: {ev.get("entity","—")} &nbsp;|&nbsp; Provenance: <span style="color:#21D4C2">{ev.get("source","—")}</span></div>
-  </div>
-</div>""",
-            unsafe_allow_html=True,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Scenario Overview Cards
-# ---------------------------------------------------------------------------
-
-def render_scenario_card(scenario: Dict[str, Any]) -> None:
-    card_type = "legitimate" if scenario["type"] == "Legitimate" else "attack"
-    badge_color = "#10B981" if card_type == "legitimate" else "#EF4444"
-    badge_text = "✓ LEGITIMATE ARCHETYPE" if card_type == "legitimate" else "⚠ ATTACK ARCHETYPE"
-    count_val = scenario.get("count", "")
-    count_pill = f'<span style="font-size:0.66rem;color:#94A3B8;margin-left:auto">{count_val} txs in DB</span>' if count_val else ""
-
-    st.markdown(
-        f"""
-<div class="scenario-card {card_type}">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-    <span style="font-size:0.65rem;font-weight:700;color:{badge_color};letter-spacing:0.07em">{badge_text}</span>
-    <span style="font-size:0.66rem;color:#64748B">{scenario["id"]}</span>
-    <code style="font-size:0.68rem;color:#21D4C2;background:#082330;padding:1px 6px;border-radius:4px">Sample: {scenario["tx_id"]}</code>
-    {count_pill}
-  </div>
-  <div class="scenario-title">{scenario["name"]}</div>
-  <div class="scenario-headline">{scenario["headline"]}</div>
-  <div class="scenario-lesson">💡 {scenario["key_lesson"]}</div>
-</div>""",
-        unsafe_allow_html=True,
-    )
 
 
 # ---------------------------------------------------------------------------

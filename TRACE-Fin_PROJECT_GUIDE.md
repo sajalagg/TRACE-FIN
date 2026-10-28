@@ -257,8 +257,7 @@ Suggested tables, to implement progressively:
     response time, response.
 -   `incidents`: incident ID, related transaction, status, severity,
     reason, timestamps.
--   `incident_evidence`: incident ID, evidence type, linked record ID or
-    safe snapshot (with SHA-256 tamper-evident digest `evidence_sha256`), explanation.
+-   `incident_evidence`: incident ID, evidence type, linked record ID or explanation.
 
 Avoid one giant table that duplicates all information. Prefer linked
 records and explicit timestamps.
@@ -473,13 +472,12 @@ transaction investigation to a stored verification response.
 -   List incidents and filter by status/severity.
 -   Show incident details, related transaction, user financial/business profile, risk explanations,
     timeline, verification response, and linked evidence.
--   Include a tamper-evident canonical JSON snapshot and SHA-256 digest (`evidence_sha256`) of the forensic state captured when the incident was opened, with an integrity verification check.
 -   Allow a simple status update such as `open`, `investigating`, and
     `closed`.
 -   Store recommended next steps as suggestions, not automated
     real-world actions.
 -   Preserve the original evidence references.
--   Add tests for incident creation, retrieval, integrity verification, and status changes.
+-   Add tests for incident creation, retrieval, and status changes.
 
 Suggested endpoints:
 

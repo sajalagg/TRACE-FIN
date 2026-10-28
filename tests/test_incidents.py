@@ -37,7 +37,7 @@ def _create_denied_incident(client: TestClient, tx_id: str) -> str:
 def test_incident_creation_listing_and_detail_retrieval(
     seeded_env: tuple[TestClient, Path],
 ) -> None:
-    """Verify incident listing, filters, full detail payload, and SHA-256 integrity check."""
+    """Verify incident listing, filters, and full detail payload."""
     client, db_file = seeded_env
 
     # Create an incident for ATO transaction TX-0391 and BEC transaction
@@ -71,11 +71,6 @@ def test_incident_creation_listing_and_detail_retrieval(
     assert detail["user_profile"]["account_category"] == "business"
     assert detail["verification_request"]["user_response"] == "denied"
 
-    # Verify SHA-256 integrity check passes
-    integrity = detail["evidence_integrity"]
-    assert integrity["integrity_verified"] is True
-    assert integrity["stored_sha256"] == integrity["recomputed_sha256"]
-
     # Verify BEC-specific advisory playbook is included in recommended_actions
     recs_joined = " ".join(detail["recommended_actions"])
     assert "B2B BEC Playbook" in recs_joined
@@ -89,10 +84,10 @@ def test_incident_creation_listing_and_detail_retrieval(
     )
 
 
-def test_incident_status_lifecycle_and_tamper_detection(
+def test_incident_status_lifecycle(
     seeded_env: tuple[TestClient, Path],
 ) -> None:
-    """Verify status updates (open -> investigating -> closed) and SHA-256 tamper detection."""
+    """Verify status updates (open -> investigating -> closed)."""
     client, db_file = seeded_env
     inc_id = _create_denied_incident(client, "TX-0391")
 
@@ -124,26 +119,6 @@ def test_incident_status_lifecycle_and_tamper_detection(
     assert closed_data["incident"]["status"] == "closed"
     # Closing an incident must preserve all linked evidence records!
     assert len(closed_data["linked_evidence"]) == evidence_count_before
-    assert closed_data["evidence_integrity"]["integrity_verified"] is True
-
-    # 3. Simulate tampering with the stored JSON snapshot in SQLite and verify detection
-    with get_connection(db_file) as conn:
-        conn.execute(
-            """
-            UPDATE incidents
-            SET evidence_snapshot_json = '{"tampered":true}'
-            WHERE incident_id = ?;
-            """,
-            (inc_id,),
-        )
-        conn.commit()
-
-    tampered_res = client.get(f"/incidents/{inc_id}").json()
-    assert tampered_res["evidence_integrity"]["integrity_verified"] is False
-    assert (
-        tampered_res["evidence_integrity"]["stored_sha256"]
-        != tampered_res["evidence_integrity"]["recomputed_sha256"]
-    )
 
 
 def test_incident_errors(seeded_env: tuple[TestClient, Path]) -> None:

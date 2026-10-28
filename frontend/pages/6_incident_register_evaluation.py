@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from services.data_provider import (
     get_evaluation_metrics,
     get_risk_scores,
-    get_transaction,
+    get_transaction_index,
     get_transactions,
 )
 from ui.components import (
@@ -239,6 +239,7 @@ st.caption(
 )
 
 all_txs = get_transactions()
+tx_index = get_transaction_index()
 all_tx_ids = [t["id"] for t in all_txs] if all_txs else []
 
 default_tx = st.session_state.get("selected_tx_id", all_tx_ids[0] if all_tx_ids else None)
@@ -251,17 +252,19 @@ selected_tx_id = st.selectbox(
     options=all_tx_ids,
     index=default_idx,
     format_func=lambda tid: (
-        f"{tid} · {get_transaction(tid)['sender_name'][:20]} → {get_transaction(tid)['beneficiary_name'][:18]} · "
-        f"{fmt_currency(get_transaction(tid)['amount'])} · "
-        f"M1={get_transaction(tid).get('method1_score',0)} ──► M2={get_transaction(tid).get('method2_score',0)} ──► M3={get_transaction(tid).get('method3_score',0)} "
-        f"[{get_transaction(tid).get('raw_status', get_transaction(tid).get('status',''))}]"
+        f"{tid} · {tx_index[tid]['sender_name'][:20]} → {tx_index[tid]['beneficiary_name'][:18]} · "
+        f"{fmt_currency(tx_index[tid]['amount'])} · "
+        f"M1={tx_index[tid].get('method1_score',0)} ──► M2={tx_index[tid].get('method2_score',0)} ──► M3={tx_index[tid].get('method3_score',0)} "
+        f"[{tx_index[tid].get('raw_status', tx_index[tid].get('status',''))}]"
+        if tid in tx_index
+        else str(tid)
     ),
     key="eval_tx_select",
 )
 
 st.session_state["selected_tx_id"] = selected_tx_id
 
-tx = get_transaction(selected_tx_id)
+tx = tx_index.get(selected_tx_id)
 scores = get_risk_scores(selected_tx_id)
 
 if tx and scores:

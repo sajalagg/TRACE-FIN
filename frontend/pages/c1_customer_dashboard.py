@@ -9,10 +9,10 @@ from __future__ import annotations
 import streamlit as st
 
 from services.data_provider import (
-    get_transactions,
     get_user_beneficiaries_list,
     get_user_profile,
     get_user_sessions,
+    get_user_transactions,
     get_verification_requests_live,
 )
 from ui.components import (
@@ -42,8 +42,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-user_txs = get_transactions({"search": uid})
-user_txs = [t for t in user_txs if t.get("sender_id") == uid]
+user_txs = get_user_transactions(uid)
 pending_alerts = get_verification_requests_live(user_id=uid, status="pending")
 bens = get_user_beneficiaries_list(uid)
 

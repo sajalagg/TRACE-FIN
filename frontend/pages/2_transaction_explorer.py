@@ -14,7 +14,7 @@ import streamlit as st
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from services.data_provider import get_risk_scores, get_transaction, get_transactions
+from services.data_provider import get_transaction_index, get_risk_scores, get_transactions
 from ui.components import (
     RISK_COLOR_MAP,
     expenditure_badge_html,
@@ -75,6 +75,7 @@ status_filter = st.sidebar.multiselect(
 )
 
 all_txs = get_transactions()
+tx_index = get_transaction_index()
 amounts = [float(t["amount"]) for t in all_txs] if all_txs else [0.0, 200000.0]
 max_amt = float(max(amounts)) if amounts else 200000.0
 
@@ -232,13 +233,15 @@ if tx_ids:
         options=tx_ids,
         index=default_idx,
         format_func=lambda tid: (
-            f"{tid} — {get_transaction(tid)['sender_name']} → {get_transaction(tid)['beneficiary_name']} "
-            f"({fmt_currency(get_transaction(tid)['amount'])}) · Risk: {get_transaction(tid).get('method3_score', get_transaction(tid).get('risk_score', 0))}/100"
+            f"{tid} — {tx_index[tid]['sender_name']} → {tx_index[tid]['beneficiary_name']} "
+            f"({fmt_currency(tx_index[tid]['amount'])}) · Risk: {tx_index[tid].get('method3_score', tx_index[tid].get('risk_score', 0))}/100"
+            if tid in tx_index
+            else str(tid)
         ),
         key="detail_tx_select",
     )
     st.session_state["selected_tx_id"] = selected_tx_id
-    tx = get_transaction(selected_tx_id)
+    tx = tx_index.get(selected_tx_id)
     scores = get_risk_scores(selected_tx_id)
 
     if tx and scores:

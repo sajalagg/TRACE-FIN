@@ -3,12 +3,13 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.database import get_connection
 from app.schemas.api_schemas import (
     AlertDecisionResponseSchema,
+    RiskScoreResponseSchema,
     UserPreferencesSchema,
     UserPreferencesUpdateSchema,
 )
@@ -20,18 +21,6 @@ DEFAULT_TIMEZONE_IANA = "UTC"
 DEFAULT_QUIET_HOURS_ENABLED = True
 DEFAULT_QUIET_HOURS_START = "22:00"
 DEFAULT_QUIET_HOURS_END = "07:00"
-
-SUPPORTED_DEMO_TIMEZONES: List[str] = [
-    "UTC",
-    "Asia/Kolkata",
-    "Europe/London",
-    "America/New_York",
-    "America/Los_Angeles",
-    "Asia/Singapore",
-    "Asia/Dubai",
-    "Europe/Paris",
-    "Asia/Tokyo",
-]
 
 POLICY_DISCLAIMER_TEXT = (
     "Demonstration Alert Policy Only: Quiet-hours queueing and critical-event bypass are simulated "
@@ -208,12 +197,13 @@ def evaluate_alert_decision(
     override_quiet_hours_start: Optional[str] = None,
     override_quiet_hours_end: Optional[str] = None,
     db_path: Optional[Path] = None,
+    precomputed_score: Optional[RiskScoreResponseSchema] = None,
 ) -> Optional[AlertDecisionResponseSchema]:
     """Evaluate a transaction's risk score against user alert policy (or What-If overrides).
 
     Returns `None` if `transaction_id` does not exist.
     """
-    score_res = score_transaction(
+    score_res = precomputed_score or score_transaction(
         transaction_id=transaction_id,
         method=method,
         db_path=db_path,

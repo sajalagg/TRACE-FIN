@@ -505,15 +505,6 @@ class IncidentEvidenceSchema(BaseModel):
     explanation: str
 
 
-class EvidenceIntegritySchema(BaseModel):
-    """Tamper-evident SHA-256 verification status for an incident's forensic snapshot."""
-
-    stored_sha256: str
-    recomputed_sha256: str
-    integrity_verified: bool
-    verification_message: str
-
-
 class IncidentSummarySchema(BaseModel):
     """Summary schema for listing incidents (`GET /incidents`)."""
 
@@ -532,7 +523,7 @@ class IncidentSummarySchema(BaseModel):
     risk_score_at_creation: int
     scoring_method_used: str
     summary_reason: str
-    evidence_sha256: str
+    evidence_sha256: str = ""
     created_at_utc: str
     updated_at_utc: str
 
@@ -544,7 +535,6 @@ class IncidentDetailResponseSchema(BaseModel):
     recommended_actions: List[str] = Field(
         description="Advisory next steps for the investigator (suggestions only, not automated actions)."
     )
-    evidence_integrity: EvidenceIntegritySchema
     transaction: TransactionSummarySchema
     user_profile: UserProfileSchema
     verification_request: Optional[VerificationRequestSchema] = None

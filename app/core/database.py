@@ -19,6 +19,26 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     return conn
 
 
+def next_sequential_id(
+    conn: sqlite3.Connection,
+    table: str,
+    id_column: str,
+    prefix: str,
+    width: int = 4,
+    where_clause: str = "",
+) -> str:
+    """Generate the next unique sequential ID (`{prefix}{n:0{width}d}`) for `table`."""
+    sql = f"SELECT COUNT(*) AS cnt FROM {table}"
+    if where_clause:
+        sql += f" WHERE {where_clause}"
+    cnt = int(conn.execute(f"{sql};").fetchone()["cnt"])
+    candidate = f"{prefix}{cnt + 1:0{width}d}"
+    while conn.execute(f"SELECT 1 FROM {table} WHERE {id_column} = ?;", (candidate,)).fetchone():
+        cnt += 1
+        candidate = f"{prefix}{cnt + 1:0{width}d}"
+    return candidate
+
+
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
     """Add `column` to `table` if the table exists and does not yet have `column`."""
     cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table});").fetchall()}
